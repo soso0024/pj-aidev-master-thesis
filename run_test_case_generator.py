@@ -12,10 +12,12 @@ import argparse
 import re
 import ast
 import subprocess
+import requests
 from pathlib import Path
 from typing import Any, Optional
 import anthropic
 import google.generativeai as genai
+from openai import OpenAI
 from dotenv import load_dotenv
 from model_utils import get_available_models, get_default_model
 from ollama_client import Ollama
@@ -28,7 +30,9 @@ AST_SCORE_ERROR_MATCH = 10  # Score for nodes matching error patterns
 AST_SCORE_LINE_OVERLAP = 5  # Score for nodes overlapping with error lines
 AST_SCORE_COMMON_ERROR = 2  # Score for common error-prone operations
 PYTEST_TIMEOUT_SECONDS = 60  # Timeout for pytest execution
-DEFAULT_MAX_TOKENS = 8000  # Max tokens for LLM response (high limit for research evaluation)
+DEFAULT_MAX_TOKENS = (
+    8000  # Max tokens for LLM response (high limit for research evaluation)
+)
 DEFAULT_TEMPERATURE = 0.0  # Temperature for deterministic responses
 DISPLAY_LINE_LIMIT = 20  # Max lines to display without truncation
 TRUNCATE_HEAD_LINES = 10  # Lines to show at start when truncating
@@ -47,7 +51,7 @@ class TestCaseGenerator:
         include_ast: bool = False,
         show_prompt: bool = False,
         enable_evaluation: bool = True,
-        max_pytest_runs: int = 3,
+        max_fix_attempts: int = 3,
         verbose_evaluation: bool = True,
         config_path: str = "models_config.json",
         ast_fix: bool = False,
@@ -83,7 +87,7 @@ class TestCaseGenerator:
         self.include_ast = include_ast
         self.show_prompt = show_prompt
         self.enable_evaluation = enable_evaluation
-        self.max_pytest_runs = max_pytest_runs
+        self.max_fix_attempts = max_fix_attempts
         self.verbose_evaluation = verbose_evaluation
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -135,6 +139,15 @@ class TestCaseGenerator:
 
             if ollama_base_url:
                 clients["ollama"] = Ollama(base_url=ollama_base_url)
+
+        # Initialize OpenAI client if needed
+        if "openai" in providers_needed:
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if openai_api_key:
+                clients["openai"] = OpenAI(api_key=openai_api_key)
+            else:
+                # Will fail later if trying to use OpenAI models without API key
+                clients["openai"] = None
 
         return clients
 
@@ -707,7 +720,7 @@ Start your response with "import pytest" and include only executable Python test
 
     def get_total_fix_attempts(self) -> int:
         """Get the total number of fix attempts available."""
-        return max(1, self.max_pytest_runs - 1)
+        return self.max_fix_attempts
 
     def get_usage_stats(self) -> dict[str, Any]:
         """Get current usage statistics."""
@@ -774,7 +787,7 @@ Start your response with "import pytest" and include only executable Python test
                 "evaluation_enabled": self.enable_evaluation,
                 "evaluation_success": evaluation_success,
                 "fix_attempts_used": fix_attempts_used,
-                "max_pytest_runs": self.max_pytest_runs,
+                "max_fix_attempts": self.max_fix_attempts,
                 "code_coverage_percent": c0_coverage,
                 "code_coverage_c0_percent": c0_coverage,
                 "code_coverage_c1_percent": c1_coverage,
@@ -931,6 +944,8 @@ Start your response with "import pytest" and include only executable Python test
                     raise ValueError(f"Anthropic API key required for model {model}")
                 elif provider == "gemini":
                     raise ValueError(f"Gemini API key required for model {model}")
+                elif provider == "openai":
+                    raise ValueError(f"OpenAI API key required for model {model}")
                 else:
                     raise ValueError(f"Client not initialized for provider {provider}")
 
@@ -948,8 +963,12 @@ Start your response with "import pytest" and include only executable Python test
 
                 # Check if response was blocked or has no candidates
                 if not response.candidates:
-                    if response.prompt_feedback and hasattr(response.prompt_feedback, 'block_reason'):
-                        print(f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}")
+                    if response.prompt_feedback and hasattr(
+                        response.prompt_feedback, "block_reason"
+                    ):
+                        print(
+                            f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}"
+                        )
                     else:
                         print("❌ Gemini API returned no candidates.")
                     return ""
@@ -965,6 +984,32 @@ Start your response with "import pytest" and include only executable Python test
                 self.total_cost += cost
 
                 raw_response = response.text
+                return self.clean_generated_code(raw_response)
+
+            elif provider == "openai":
+                # OpenAI API call using standard v1/chat/completions endpoint
+                response = client.chat.completions.create(
+                    model=self.model_mapping[model],
+                    max_tokens=DEFAULT_MAX_TOKENS,
+                    temperature=0.0,  # Set to 0 for deterministic responses
+                    top_p=1.0,  # Explicitly set to default for consistency
+                    frequency_penalty=0.0,  # No penalty for token frequency
+                    presence_penalty=0.0,  # No penalty for token presence
+                    seed=42,  # Fixed seed for reproducible outputs
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                # Track token usage and cost
+                input_tokens = response.usage.prompt_tokens
+                output_tokens = response.usage.completion_tokens
+
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+
+                cost = self.calculate_cost(input_tokens, output_tokens, model)
+                self.total_cost += cost
+
+                raw_response = response.choices[0].message.content
                 return self.clean_generated_code(raw_response)
 
             else:
@@ -1074,26 +1119,34 @@ Start your response with "import pytest" and include only executable Python test
             if result.stdout:
                 # Look for statement coverage (C0) in format like "TOTAL    100   50   10   5   95%"
                 # Format: Name Stmts Miss Branch BrPart Cover
-                coverage_match = re.search(r"TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)%", result.stdout)
+                coverage_match = re.search(
+                    r"TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)%", result.stdout
+                )
                 if coverage_match:
                     c0_coverage = float(coverage_match.group(1))
                 else:
                     # Fallback to old format without branch coverage "TOTAL    100   50   95%"
-                    coverage_match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+)%", result.stdout)
+                    coverage_match = re.search(
+                        r"TOTAL\s+\d+\s+\d+\s+(\d+)%", result.stdout
+                    )
                     if coverage_match:
                         c0_coverage = float(coverage_match.group(1))
-                
+
                 # Extract branch coverage (C1) from the same line
                 # With --cov-branch, the output includes branch coverage separately
                 # We need to calculate it from Branch and BrPart columns
-                branch_match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+)\s+(\d+)\s+\d+%", result.stdout)
+                branch_match = re.search(
+                    r"TOTAL\s+\d+\s+\d+\s+(\d+)\s+(\d+)\s+\d+%", result.stdout
+                )
                 if branch_match:
                     total_branches = int(branch_match.group(1))
                     partial_branches = int(branch_match.group(2))
                     if total_branches > 0:
                         # Branch coverage = (covered branches / total branches) * 100
                         # Covered branches = total branches - partial branches
-                        c1_coverage = ((total_branches - partial_branches) / total_branches) * 100
+                        c1_coverage = (
+                            (total_branches - partial_branches) / total_branches
+                        ) * 100
                     else:
                         c1_coverage = 100.0  # No branches means 100% coverage
                 else:
@@ -1135,7 +1188,7 @@ Start your response with "import pytest" and include only executable Python test
             ast_section = f"\n\nRELEVANT AST SNIPPET OF FUNCTION (focus on error):\n```\n{ast_snippet}\n```\n"
 
         # Distinguish between pytest attempts and fix attempts for clarity in the prompt
-        # A fix prompt is only shown when attempt < self.max_pytest_runs, so fix attempt index == attempt
+        # A fix prompt is only shown when attempt <= self.max_fix_attempts, so fix attempt index == attempt
         total_fix_attempts = self.get_total_fix_attempts()
         fix_attempt_line = f"This is fix attempt {attempt} of {total_fix_attempts}."
 
@@ -1220,6 +1273,8 @@ Corrected code:"""
                     raise ValueError(f"Anthropic API key required for model {model}")
                 elif provider == "gemini":
                     raise ValueError(f"Gemini API key required for model {model}")
+                elif provider == "openai":
+                    raise ValueError(f"OpenAI API key required for model {model}")
                 else:
                     raise ValueError(f"Client not initialized for provider {provider}")
 
@@ -1237,8 +1292,12 @@ Corrected code:"""
 
                 # Check if response was blocked or has no candidates
                 if not response.candidates:
-                    if response.prompt_feedback and hasattr(response.prompt_feedback, 'block_reason'):
-                        print(f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}")
+                    if response.prompt_feedback and hasattr(
+                        response.prompt_feedback, "block_reason"
+                    ):
+                        print(
+                            f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}"
+                        )
                     else:
                         print("❌ Gemini API returned no candidates.")
                     return test_code  # Return original code if fix fails
@@ -1260,6 +1319,36 @@ Corrected code:"""
                 raw_response = response.text
                 cleaned_response = self.clean_generated_code(raw_response)
 
+            elif provider == "openai":
+                # OpenAI API call using standard v1/chat/completions endpoint
+                response = client.chat.completions.create(
+                    model=self.model_mapping[model],
+                    max_tokens=DEFAULT_MAX_TOKENS,
+                    temperature=0.0,  # Set to 0 for deterministic responses
+                    top_p=1.0,  # Explicitly set to default for consistency
+                    frequency_penalty=0.0,  # No penalty for token frequency
+                    presence_penalty=0.0,  # No penalty for token presence
+                    seed=42,  # Fixed seed for reproducible outputs
+                    messages=[{"role": "user", "content": fix_prompt}],
+                )
+
+                # Track token usage
+                input_tokens = response.usage.prompt_tokens
+                output_tokens = response.usage.completion_tokens
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+
+                cost = self.calculate_cost(input_tokens, output_tokens, model)
+                self.total_cost += cost
+
+                if self.verbose_evaluation:
+                    print(
+                        f"💰 Fix attempt {attempt} cost: ${cost:.6f} (Input: {input_tokens}, Output: {output_tokens})"
+                    )
+
+                raw_response = response.choices[0].message.content
+                cleaned_response = self.clean_generated_code(raw_response)
+
             else:
                 # Anthropic/Ollama API call (existing code)
                 response = client.messages.create(
@@ -1274,7 +1363,9 @@ Corrected code:"""
                 self.total_input_tokens += usage.input_tokens
                 self.total_output_tokens += usage.output_tokens
 
-                cost = self.calculate_cost(usage.input_tokens, usage.output_tokens, model)
+                cost = self.calculate_cost(
+                    usage.input_tokens, usage.output_tokens, model
+                )
                 self.total_cost += cost
 
                 if self.verbose_evaluation:
@@ -1309,17 +1400,20 @@ Corrected code:"""
 
         final_c0_coverage = 0.0
         final_c1_coverage = 0.0
+        max_pytest_runs = self.max_fix_attempts + 1  # Initial run + fix attempts
 
-        for attempt in range(1, self.max_pytest_runs + 1):
+        for attempt in range(1, max_pytest_runs + 1):
             # Add clear header for each attempt
             if attempt > 1:
                 print()  # Extra blank line for better readability
                 print(f"\n{'='*80}")
-                print(f"🔄 STARTING ATTEMPT {attempt} of {self.max_pytest_runs}")
+                print(f"🔄 STARTING ATTEMPT {attempt} of {max_pytest_runs}")
                 print(f"{'='*80}\n")
-            
+
             # Run pytest
-            success, error_output, c0_coverage, c1_coverage = self.run_pytest(test_file_path)
+            success, error_output, c0_coverage, c1_coverage = self.run_pytest(
+                test_file_path
+            )
             final_c0_coverage = c0_coverage
             final_c1_coverage = c1_coverage
 
@@ -1334,7 +1428,7 @@ Corrected code:"""
             # Display detailed error information
             self.display_pytest_errors(error_output, attempt)
 
-            if attempt < self.max_pytest_runs:
+            if attempt <= self.max_fix_attempts:
                 print(f"\n{'─'*80}")
                 print(f"🔧 ATTEMPTING TO FIX ERRORS...")
                 print(f"{'─'*80}\n")
@@ -1377,7 +1471,9 @@ Corrected code:"""
 
                 print(f"📝 Updated test file with fixes")
                 print(f"\n{'─'*80}")
-                print(f"✅ Fix attempt {attempt} completed - Will retry pytest on next attempt")
+                print(
+                    f"✅ Fix attempt {attempt} completed - Will retry pytest on next attempt"
+                )
                 print(f"{'─'*80}")
                 print()  # Extra blank line for better readability
                 print()  # Extra blank line for better readability
@@ -1389,7 +1485,7 @@ Corrected code:"""
                 print("Final error output:")
                 print(error_output)
 
-        return False, self.max_pytest_runs - 1, final_c0_coverage, final_c1_coverage
+        return False, self.max_fix_attempts, final_c0_coverage, final_c1_coverage
 
     def _generate_and_evaluate_test_cases(
         self, problem: dict[str, Any], output_dir: str = "generated_tests"
@@ -1456,7 +1552,12 @@ Corrected code:"""
 
             # Update final stats after complete process and get final filepath
             final_filepath = self.update_final_stats(
-                filepath, problem, evaluation_success, fix_attempts_used, c0_coverage, c1_coverage
+                filepath,
+                problem,
+                evaluation_success,
+                fix_attempts_used,
+                c0_coverage,
+                c1_coverage,
             )
 
             final_filepaths.append(final_filepath)
@@ -1590,10 +1691,10 @@ def main():
         help="Disable automatic evaluation and fixing of generated tests",
     )
     parser.add_argument(
-        "--max-pytest-runs",
+        "--max-fix-attempts",
         type=int,
         default=3,
-        help="Maximum number of pytest runs (initial + fixes) (default: 3)",
+        help="Maximum number of LLM fix attempts (default: 3)",
     )
     parser.add_argument(
         "--quiet-evaluation",
@@ -1630,6 +1731,18 @@ def main():
         for model in selected_models
     )
 
+    # Check if any selected model requires OpenAI API
+    needs_openai = any(
+        models_config["models"][model].get("provider") == "openai"
+        for model in selected_models
+    )
+
+    # Check if any selected model requires Gemini API
+    needs_gemini = any(
+        models_config["models"][model].get("provider") == "gemini"
+        for model in selected_models
+    )
+
     if needs_anthropic and not api_key:
         print("Error: Anthropic models selected but no API key provided.")
         print("Please provide Claude API key via:")
@@ -1637,6 +1750,20 @@ def main():
         print("  2. ANTHROPIC_API_KEY environment variable")
         print("  3. Set ANTHROPIC_API_KEY in .env file")
         print("\nOr use Ollama models which don't require an API key.")
+        return 1
+
+    if needs_openai and not os.getenv("OPENAI_API_KEY"):
+        print("Error: OpenAI models selected but no API key provided.")
+        print("Please provide OpenAI API key via:")
+        print("  1. OPENAI_API_KEY environment variable")
+        print("  2. Set OPENAI_API_KEY in .env file")
+        return 1
+
+    if needs_gemini and not os.getenv("GEMINI_API_KEY"):
+        print("Error: Gemini models selected but no API key provided.")
+        print("Please provide Gemini API key via:")
+        print("  1. GEMINI_API_KEY environment variable")
+        print("  2. Set GEMINI_API_KEY in .env file")
         return 1
 
     try:
@@ -1648,7 +1775,7 @@ def main():
             include_ast=args.include_ast,
             show_prompt=args.show_prompt,
             enable_evaluation=not args.disable_evaluation,
-            max_pytest_runs=args.max_pytest_runs,
+            max_fix_attempts=args.max_fix_attempts,
             verbose_evaluation=not args.quiet_evaluation,
             ast_fix=args.ast_fix,
         )
