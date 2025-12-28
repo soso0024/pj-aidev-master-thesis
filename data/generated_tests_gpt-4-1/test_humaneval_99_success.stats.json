@@ -1,0 +1,15 @@
+{
+  "total_input_tokens": 4037,
+  "total_output_tokens": 1532,
+  "total_tokens": 5569,
+  "total_cost_usd": 0.02033,
+  "task_id": "HumanEval/99",
+  "generated_file": "data/generated_tests_gpt-4-1/test_humaneval_99_success.py",
+  "evaluation_enabled": true,
+  "evaluation_success": true,
+  "fix_attempts_used": 1,
+  "max_fix_attempts": 3,
+  "code_coverage_percent": 54.0,
+  "code_coverage_c0_percent": 54.0,
+  "code_coverage_c1_percent": 95.83333333333334
+}
