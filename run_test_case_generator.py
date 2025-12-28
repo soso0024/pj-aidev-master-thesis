@@ -837,32 +837,47 @@ Start your response with "import pytest" and include only executable Python test
             ):
                 print(f"🐛 {line}")
 
-        print(f"{'='*80}\n")
+        print(f"{'='*80}")
+        print(f"📋 END OF ERROR DETAILS - Attempt {attempt}")
+        print(f"{'='*80}")
+        print(f"\n{'─'*80}")
+        print(f"⏸️  PAUSING - Error details for Attempt {attempt} shown above")
+        print(f"{'─'*80}\n")
 
     def display_fix_prompt(self, prompt: str, attempt: int) -> None:
         """Display the fix prompt being sent to LLM."""
         if not self.verbose_evaluation:
             return
 
-        print(f"\n{'='*80}")
+        # Add clear visual separator before new fix prompt section
+        print(f"\n{'#'*80}")
+        print(f"{'#'*80}")
+        print(f"{'#'*80}")
         total_fix_attempts = self.get_total_fix_attempts()
         print(f"🤖 LLM FIX PROMPT - Fix attempt {attempt} of {total_fix_attempts}")
-        print(f"{'='*80}")
+        print(f"{'#'*80}")
+        print(f"{'#'*80}")
+        print(f"{'#'*80}\n")
         print(prompt)
+        print(f"\n{'='*80}")
+        print(f"🤖 END OF FIX PROMPT - Fix attempt {attempt} of {total_fix_attempts}")
         print(f"{'='*80}")
 
         # Ask user if they want to proceed (optional)
         if self.show_prompt:
+            print(f"\n{'─'*80}")
             while True:
                 response = (
-                    input(f"\nProceed with fix attempt {attempt}? (y/n): ")
+                    input(f"Proceed with fix attempt {attempt}? (y/n): ")
                     .lower()
                     .strip()
                 )
                 if response in ["y", "yes"]:
+                    print(f"{'─'*80}\n")
                     break
                 elif response in ["n", "no"]:
                     print("Skipping fix attempt...")
+                    print(f"{'─'*80}\n")
                     return False
                 else:
                     print("Please enter 'y' (yes) or 'n' (no)")
@@ -888,7 +903,12 @@ Start your response with "import pytest" and include only executable Python test
             print(f"\n... ({len(lines) - DISPLAY_LINE_LIMIT} lines omitted) ...\n")
             print("\n".join(lines[-TRUNCATE_TAIL_LINES:]))
 
-        print(f"{'='*80}\n")
+        print(f"{'='*80}")
+        print(f"🔧 END OF FIX RESPONSE - Fix attempt {attempt} of {total_fix_attempts}")
+        print(f"{'='*80}")
+        print(f"\n{'─'*80}")
+        print(f"✅ Fix response received for attempt {attempt}")
+        print(f"{'─'*80}\n")
 
     def generate_test_cases(self, problem: dict[str, Any], model: str) -> str:
         """Generate test cases using LLM API."""
@@ -1291,6 +1311,13 @@ Corrected code:"""
         final_c1_coverage = 0.0
 
         for attempt in range(1, self.max_pytest_runs + 1):
+            # Add clear header for each attempt
+            if attempt > 1:
+                print()  # Extra blank line for better readability
+                print(f"\n{'='*80}")
+                print(f"🔄 STARTING ATTEMPT {attempt} of {self.max_pytest_runs}")
+                print(f"{'='*80}\n")
+            
             # Run pytest
             success, error_output, c0_coverage, c1_coverage = self.run_pytest(test_file_path)
             final_c0_coverage = c0_coverage
@@ -1308,7 +1335,9 @@ Corrected code:"""
             self.display_pytest_errors(error_output, attempt)
 
             if attempt < self.max_pytest_runs:
-                print(f"🔧 Attempting to fix errors...")
+                print(f"\n{'─'*80}")
+                print(f"🔧 ATTEMPTING TO FIX ERRORS...")
+                print(f"{'─'*80}\n")
 
                 # Read current test file content
                 with open(test_file_path, "r", encoding="utf-8") as f:
@@ -1347,9 +1376,16 @@ Corrected code:"""
                     f.write(updated_content)
 
                 print(f"📝 Updated test file with fixes")
+                print(f"\n{'─'*80}")
+                print(f"✅ Fix attempt {attempt} completed - Will retry pytest on next attempt")
+                print(f"{'─'*80}")
+                print()  # Extra blank line for better readability
+                print()  # Extra blank line for better readability
             else:
                 total_fix_attempts = max(0, self.get_total_fix_attempts())
+                print(f"\n{'='*80}")
                 print(f"🚫 Maximum fix attempts ({total_fix_attempts}) reached")
+                print(f"{'='*80}")
                 print("Final error output:")
                 print(error_output)
 
