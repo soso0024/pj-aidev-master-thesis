@@ -1,0 +1,25 @@
+Generate pytest test cases for this function. Return ONLY executable Python code, no explanations or markdown.
+
+Canonical implementation:
+```python
+{function_signature}
+{canonical_solution}
+```
+
+AST representation of canonical solution:
+```
+{ast_representation}
+```
+
+Requirements:
+- Return ONLY Python code that can be executed directly
+- Include comprehensive test cases covering edge cases, normal cases, and error conditions
+- Use pytest format
+- Include necessary imports
+- DO NOT include explanations, markdown, or the original function implementation
+- DO NOT wrap code in ```python``` blocks
+- IMPORTANT: When using @pytest.mark.parametrize, properly escape quotes in parameter values
+- Use single quotes inside double quotes or vice versa, or use triple quotes for complex strings
+- Example: @pytest.mark.parametrize("input,expected", [("test", True), ('another', False)])
+
+Start your response with "import pytest" and include only executable Python test code:

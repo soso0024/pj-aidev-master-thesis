@@ -1,0 +1,67 @@
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Generated test files
+# generated_tests/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# PyTest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+CLAUDE.md
+
+.DS_Store
+
+# Workflows
+.github/workflows/black_formatter.yml
+
+# Visualizations
+vizs/
+
+# Generated test files
+generated_tests_claude-3-haiku/
+generated_tests_claude-3-5-haiku/
+generated_tests_claude-4-sonnet/
+generated_tests_claude-opus-4-1/
+generated_tests_claude-haiku-4-5/
+generated_tests_claude-4-5-sonnet/
+generated_tests_gemini-2-5-flash-lite
+
+# Comparison filesg
+all_comparison/best_model_comparison.png
+all_comparison/comprehensive_summary_table.csv
+all_comparison/comprehensive_summary_table.txt
+all_comparison/input_tokens_comparison.png
+all_comparison/pareto_front_cost_vs_effective_coverage.png
+# Comparison files with Claude 4.5 Haiku
+all_comparison_with_haiku45/best_model_comparison.png
+all_comparison_with_haiku45/comprehensive_summary_table.csv
+all_comparison_with_haiku45/comprehensive_summary_table.txt
+all_comparison_with_haiku45/input_tokens_comparison.png
+all_comparison_with_haiku45/pareto_front_cost_vs_effective_coverage.png
+
+# Tmp files
+tmp/
+
+# Remove duplicates script
+remove_duplicates.py
+
+# Backup run analysis script
+analysis/backup_run_analysis.py
