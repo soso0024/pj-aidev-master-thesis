@@ -18,4 +18,5 @@ dependencies = [
     "flake8>=6.0.0",
     "flake8-cognitive-complexity>=0.1.0",
     "google-generativeai>=0.8.5",
+    "openai>=1.0.0",
 ]
