@@ -126,6 +126,15 @@
         "input_per_1k": 0.0,
         "output_per_1k": 0.0
       }
+    },
+    "gpt-4.1": {
+      "api_name": "gpt-4.1",
+      "folder_name": "gpt-4-1",
+      "provider": "openai",
+      "pricing": {
+        "input_per_1k": 0.002,
+        "output_per_1k": 0.008
+      }
     }
   },
   "default_model": "gemini-2.5-flash-lite"
