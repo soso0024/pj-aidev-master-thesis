@@ -49,12 +49,15 @@ class DataLoader:
         - test_humaneval_0_success.stats.json -> {problem_id: 0, docstring: False, ast: False, success: True}
         - test_humaneval_5_docstring_ast_false.stats.json -> {problem_id: 5, docstring: True, ast: True, success: False}
         - test_humaneval_0_value_misuse_success.stats.json -> {problem_id: 0, bug_type: "value_misuse", success: True}
+        - test_python_0_missing_logic_success.stats.json -> {problem_id: 0, bug_type: "missing logic", success: True}
         """
         # Remove .stats.json extension
         base_name = filename.replace(".stats.json", "")
 
-        # Extract problem ID
-        match = re.search(r"test_humaneval_(\d+)", base_name)
+        # Extract problem ID - support both HumanEval and HumanEvalPack (Python) formats
+        # HumanEval: test_humaneval_0, test_humaneval_5_docstring, etc.
+        # HumanEvalPack: test_python_0, test_python_5_missing_logic, etc.
+        match = re.search(r"test_(?:humaneval|python)_(\d+)", base_name)
         if not match:
             return None
 
@@ -63,8 +66,13 @@ class DataLoader:
         # Check for bug type (HumanEvalPack)
         bug_type = None
         bug_type_patterns = [
-            "value_misuse", "function_misuse", "excess_logic",
-            "variable_misuse", "operator_misuse", "missing_condition"
+            "value_misuse",
+            "function_misuse",
+            "excess_logic",
+            "variable_misuse",
+            "operator_misuse",
+            "missing_condition",
+            "missing_logic",
         ]
         for bt in bug_type_patterns:
             if f"_{bt}_" in base_name or base_name.endswith(f"_{bt}"):
@@ -108,11 +116,11 @@ class DataLoader:
             "success": is_success,
             "filename": filename,
         }
-        
+
         # Add bug_type if present
         if bug_type:
             result["bug_type"] = bug_type
-        
+
         return result
 
     def load_data(self) -> List[Dict[str, Any]]:
@@ -179,10 +187,20 @@ class DataLoader:
                 if "code_coverage_percent" not in combined_data:
                     combined_data["code_coverage_percent"] = 0.0
 
+                # Handle C0/C1 coverage fields
+                # C0 (Statement Coverage) - fallback to code_coverage_percent if not available
+                if "code_coverage_c0_percent" not in combined_data:
+                    combined_data["code_coverage_c0_percent"] = combined_data.get(
+                        "code_coverage_percent", 0.0
+                    )
+                # C1 (Branch Coverage) - default to 100% if no branches exist
+                if "code_coverage_c1_percent" not in combined_data:
+                    combined_data["code_coverage_c1_percent"] = 100.0
+
                 # Handle missing dataset_type field (default to humaneval)
                 if "dataset_type" not in combined_data:
                     combined_data["dataset_type"] = "humaneval"
-                
+
                 # Handle missing HumanEvalPack-specific fields
                 if "bug_detection_success" not in combined_data:
                     combined_data["bug_detection_success"] = None
@@ -219,74 +237,83 @@ class DataLoader:
 
         print(f"Successfully loaded {len(self.data)} records")
         print(f"Models found: {sorted(set(d['model'] for d in self.data))}")
-        
+
         # Print dataset type distribution
         dataset_types = {}
         for d in self.data:
             dtype = d.get("dataset_type", "humaneval")
             dataset_types[dtype] = dataset_types.get(dtype, 0) + 1
-        
+
         if len(dataset_types) > 0:
             print(f"Dataset type distribution:")
             for dtype, count in sorted(dataset_types.items()):
                 print(f"  - {dtype}: {count}")
-        
+
         # Print HumanEvalPack-specific statistics if available
-        humanevalpack_data = [d for d in self.data if d.get("dataset_type") == "humanevalpack"]
+        humanevalpack_data = [
+            d for d in self.data if d.get("dataset_type") == "humanevalpack"
+        ]
         if humanevalpack_data:
             print(f"\nHumanEvalPack statistics:")
             print(f"  Total problems: {len(humanevalpack_data)}")
-            
+
             # Bug type distribution
             bug_types = {}
             for d in humanevalpack_data:
                 bug_type = d.get("bug_type", "unknown")
                 bug_types[bug_type] = bug_types.get(bug_type, 0) + 1
-            
+
             print(f"  Bug type distribution:")
             for bug_type, count in sorted(bug_types.items()):
                 print(f"    - {bug_type}: {count}")
-            
+
             # True bug detection (assertion errors only)
             true_positive_count = sum(
-                1 for d in humanevalpack_data 
-                if d.get("is_true_positive") == True
+                1 for d in humanevalpack_data if d.get("is_true_positive") == True
             )
-            
+
             # False positives (runtime errors, not logic errors)
             false_positive_count = sum(
-                1 for d in humanevalpack_data 
-                if d.get("is_false_positive") == True
+                1 for d in humanevalpack_data if d.get("is_false_positive") == True
             )
-            
+
             # Total evaluated
             bug_detection_total = sum(
-                1 for d in humanevalpack_data 
+                1
+                for d in humanevalpack_data
                 if d.get("bug_detection_success") is not None
             )
-            
+
             if bug_detection_total > 0:
                 true_positive_rate = (true_positive_count / bug_detection_total) * 100
                 false_positive_rate = (false_positive_count / bug_detection_total) * 100
-                
+
                 print(f"\n  Bug detection results:")
                 print(f"    Total evaluated: {bug_detection_total}")
-                print(f"    ✅ True Positives (AssertionError): {true_positive_count} ({true_positive_rate:.1f}%)")
-                print(f"    ⚠️  False Positives (Runtime errors): {false_positive_count} ({false_positive_rate:.1f}%)")
-                print(f"    ❌ False Negatives (Missed bugs): {bug_detection_total - true_positive_count - false_positive_count}")
-                
+                print(
+                    f"    ✅ True Positives (AssertionError): {true_positive_count} ({true_positive_rate:.1f}%)"
+                )
+                print(
+                    f"    ⚠️  False Positives (Runtime errors): {false_positive_count} ({false_positive_rate:.1f}%)"
+                )
+                print(
+                    f"    ❌ False Negatives (Missed bugs): {bug_detection_total - true_positive_count - false_positive_count}"
+                )
+
                 # Failure type distribution
                 failure_types = {}
                 for d in humanevalpack_data:
                     if d.get("buggy_failure_type"):
                         ft = d.get("buggy_failure_type")
                         failure_types[ft] = failure_types.get(ft, 0) + 1
-                
+
                 if failure_types:
                     print(f"\n  Failure type distribution:")
-                    for ft, count in sorted(failure_types.items(), key=lambda x: x[1], reverse=True):
+                    for ft, count in sorted(
+                        failure_types.items(), key=lambda x: x[1], reverse=True
+                    ):
                         print(f"    - {ft}: {count}")
-        
+
         return self.data
 
     def get_data(self) -> List[Dict[str, Any]]:

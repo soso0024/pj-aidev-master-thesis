@@ -12,6 +12,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Efficiency Metric Constants
+# C1 (Branch Coverage) is weighted higher because achieving C1 implies C0 coverage
+# Theoretical basis: C1 ⊃ C0 (branch coverage subsumes statement coverage)
+C0_WEIGHT = 0.3  # Statement Coverage weight
+C1_WEIGHT = 0.7  # Branch Coverage weight (higher because C1 > C0)
+COST_MULTIPLIER = 1000  # Normalize cost to per $0.001
+
 
 class DatasetAwarePlots:
     """Handles dataset-aware visualization methods for test result analysis."""
@@ -56,6 +63,9 @@ class DatasetAwarePlots:
 
         self._plot_cost_vs_coverage_by_model(output_path)
         print("  ✓ Created cost vs coverage by model analysis")
+
+        self._plot_efficiency_metrics_comparison(output_path)
+        print("  ✓ Created efficiency metrics comparison (CCE-C0, CCE-C1, SCCE)")
 
     def _plot_success_by_complexity(self, output_path: Path) -> None:
         """Plot success rate by problem complexity level."""
@@ -445,6 +455,188 @@ class DatasetAwarePlots:
 
         plt.savefig(
             output_path / "7_cost_vs_coverage_by_model.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+    def _plot_efficiency_metrics_comparison(self, output_path: Path) -> None:
+        """Plot comparison of efficiency metrics (CCE-C0, CCE-C1, SCCE).
+        
+        Metrics:
+        - CCE-C0: C0 Coverage / (Cost × 1000) - Statement coverage efficiency
+        - CCE-C1: C1 Coverage / (Cost × 1000) - Branch coverage efficiency
+        - SCCE: Success × (0.3×C0 + 0.7×C1) / (Cost × 1000) - Success-weighted efficiency
+        """
+        if "model" not in self.df.columns:
+            print(
+                "Warning: model information not found. Skipping efficiency comparison."
+            )
+            return
+
+        # Ensure C0/C1 columns exist with fallback
+        if "code_coverage_c0_percent" not in self.df.columns:
+            self.df["code_coverage_c0_percent"] = self.df["code_coverage_percent"]
+        if "code_coverage_c1_percent" not in self.df.columns:
+            self.df["code_coverage_c1_percent"] = 100.0
+
+        # Get unique models, excluding 'unknown'
+        models = [m for m in self.df["model"].unique() if m != "unknown"]
+        if not models:
+            print("Warning: No valid model data found. Skipping efficiency comparison.")
+            return
+
+        # Determine subplot layout
+        n_models = len(models)
+        if n_models == 1:
+            fig, axes = plt.subplots(1, 1, figsize=(12, 8))
+            axes = [axes]
+        elif n_models == 2:
+            fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+        elif n_models <= 4:
+            fig, axes = plt.subplots(2, 2, figsize=(16, 14))
+            axes = axes.ravel()
+        else:
+            cols = 3
+            rows = (n_models + cols - 1) // cols
+            fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 6 * rows))
+            axes = axes.ravel()
+
+        for idx, model in enumerate(models):
+            if idx >= len(axes):
+                break
+
+            ax = axes[idx]
+            model_data = self.df[self.df["model"] == model]
+
+            # Calculate aggregated metrics by configuration
+            agg_stats = (
+                model_data.groupby("config_type_display", observed=False)
+                .agg(
+                    {
+                        "total_cost_usd": "mean",
+                        "code_coverage_percent": "mean",
+                        "code_coverage_c0_percent": "mean",
+                        "code_coverage_c1_percent": "mean",
+                        "success": "mean",
+                    }
+                )
+                .reset_index()
+            )
+
+            # Filter out rows with zero cost to avoid division by zero
+            agg_stats = agg_stats[agg_stats["total_cost_usd"] > 0]
+
+            if agg_stats.empty:
+                ax.text(
+                    0.5, 0.5, f"No data for {model}",
+                    ha="center", va="center", transform=ax.transAxes
+                )
+                continue
+
+            # Calculate efficiency metrics
+            # CCE-C0: C0 Coverage Cost Efficiency
+            agg_stats["cce_c0"] = agg_stats["code_coverage_c0_percent"] / (
+                agg_stats["total_cost_usd"] * COST_MULTIPLIER
+            )
+
+            # CCE-C1: C1 Coverage Cost Efficiency
+            agg_stats["cce_c1"] = agg_stats["code_coverage_c1_percent"] / (
+                agg_stats["total_cost_usd"] * COST_MULTIPLIER
+            )
+
+            # SCCE: Success-weighted Coverage Cost Efficiency
+            # Uses weighted average of C0 and C1, multiplied by success rate
+            weighted_coverage = (
+                C0_WEIGHT * agg_stats["code_coverage_c0_percent"]
+                + C1_WEIGHT * agg_stats["code_coverage_c1_percent"]
+            )
+            agg_stats["scce"] = (agg_stats["success"] * weighted_coverage) / (
+                agg_stats["total_cost_usd"] * COST_MULTIPLIER
+            )
+
+            # Plot grouped bar chart
+            x = range(len(agg_stats))
+            width = 0.25
+
+            bars1 = ax.bar(
+                [i - width for i in x],
+                agg_stats["cce_c0"],
+                width,
+                label="CCE-C0 (Statement)",
+                color="#3498db",
+                alpha=0.85,
+                edgecolor="black",
+                linewidth=0.5,
+            )
+            bars2 = ax.bar(
+                x,
+                agg_stats["cce_c1"],
+                width,
+                label="CCE-C1 (Branch)",
+                color="#e74c3c",
+                alpha=0.85,
+                edgecolor="black",
+                linewidth=0.5,
+            )
+            bars3 = ax.bar(
+                [i + width for i in x],
+                agg_stats["scce"],
+                width,
+                label="SCCE (Success-weighted)",
+                color="#2ecc71",
+                alpha=0.85,
+                edgecolor="black",
+                linewidth=0.5,
+            )
+
+            # Add value labels on bars
+            for bars in [bars1, bars2, bars3]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(
+                            bar.get_x() + bar.get_width() / 2,
+                            height,
+                            f"{height:.1f}",
+                            ha="center",
+                            va="bottom",
+                            fontsize=9,
+                            fontweight="bold",
+                        )
+
+            # Formatting
+            ax.set_xlabel("Configuration Type", fontsize=14, fontweight="bold")
+            ax.set_ylabel("Efficiency Score", fontsize=14, fontweight="bold")
+            ax.set_title(
+                f"{self._format_model_name(model)}",
+                fontsize=16,
+                fontweight="bold",
+            )
+            ax.set_xticks(x)
+            ax.set_xticklabels(
+                agg_stats["config_type_display"], rotation=45, ha="right", fontsize=11
+            )
+            ax.legend(fontsize=10, loc="upper right")
+            ax.grid(axis="y", alpha=0.3, linestyle="--")
+            ax.set_ylim(bottom=0)
+
+        # Hide unused subplots
+        for idx in range(n_models, len(axes)):
+            axes[idx].set_visible(False)
+
+        # Add overall title with metric definitions
+        fig.suptitle(
+            "Efficiency Metrics Comparison by Model\n"
+            f"CCE-C0: C0/Cost | CCE-C1: C1/Cost | SCCE: Success×({C0_WEIGHT}×C0+{C1_WEIGHT}×C1)/Cost",
+            fontsize=14,
+            fontweight="bold",
+            y=1.02,
+        )
+
+        plt.tight_layout()
+        plt.savefig(
+            output_path / "8_efficiency_metrics_comparison.png",
             dpi=300,
             bbox_inches="tight",
         )

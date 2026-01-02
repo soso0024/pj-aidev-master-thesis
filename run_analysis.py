@@ -115,6 +115,7 @@ class TestResultsAnalyzer:
             return {
                 "total_records": 0,
                 "configurations": [],
+                "has_dataset_classification": False,
                 "message": "No data loaded",
             }
 
