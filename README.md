@@ -93,6 +93,9 @@ python prompt_engineering_comparison.py --task-id "HumanEval/0"
 ```bash
 # Generate analysis plots (requires Python 3.8.20+)
 python run_analysis.py
+
+# With specific results directory
+python run_analysis.py --results-dir data/generated_tests_claude-haiku-4-5/ --output-dir vizs/
 ```
 
 Creates visualizations in `vizs/` folder:
@@ -101,6 +104,117 @@ Creates visualizations in `vizs/` folder:
 - Cost vs. performance metrics
 - Algorithm complexity analysis
 - Dataset-aware problem classification
+- **Efficiency metrics comparison** (CCE-C0, CCE-C1, SCCE)
+
+## Efficiency Metrics
+
+The analysis includes custom efficiency metrics for evaluating cost-performance trade-offs:
+
+| Metric     | Formula                                     | Description                          |
+| ---------- | ------------------------------------------- | ------------------------------------ |
+| **CCE-C0** | C0 Coverage / (Cost × 1000)                 | Statement coverage efficiency        |
+| **CCE-C1** | C1 Coverage / (Cost × 1000)                 | Branch coverage efficiency           |
+| **SCCE**   | Success × (0.3×C0 + 0.7×C1) / (Cost × 1000) | Success-weighted coverage efficiency |
+
+### Metric Interpretation
+
+- **CCE-C0 / CCE-C1**: Higher values indicate better cost-efficiency. A value of 10.0 means achieving 10% coverage per $0.001 spent.
+- **SCCE**: Combines success rate with weighted coverage. Only successful test cases contribute to the score, making it the most comprehensive metric.
+- **Weighted Coverage**: `0.3×C0 + 0.7×C1` - C1 (branch coverage) is weighted higher because achieving C1 implies C0 is also achieved (C1 ⊃ C0).
+
+### Example Interpretation
+
+| Model         | CCE-C0 | CCE-C1 | SCCE | Interpretation                                         |
+| ------------- | ------ | ------ | ---- | ------------------------------------------------------ |
+| Claude Haiku  | 7.1    | 8.0    | 7.73 | High efficiency, good for budget-limited               |
+| Claude Sonnet | 3.2    | 3.5    | 3.4  | Lower efficiency but may have higher absolute coverage |
+
+> **Note**: Compare SCCE across models to identify the best cost-performance trade-off for your use case.
+
+## Statistical Significance Testing
+
+For research paper validation, the analysis includes comprehensive statistical tests.
+
+### Why Non-Parametric Tests?
+
+Test generation results often violate normality assumptions (success rates are bounded 0-100%, distributions may be skewed). Non-parametric tests make no assumptions about the underlying distribution.
+
+### Tests Performed
+
+| Test                      | Purpose                              | Output               |
+| ------------------------- | ------------------------------------ | -------------------- |
+| **Kruskal-Wallis H-test** | Overall comparison of 3+ groups      | H-statistic, p-value |
+| **Mann-Whitney U test**   | Pairwise comparison (non-parametric) | U-statistic, p-value |
+| **Bonferroni correction** | Multiple comparison adjustment       | Adjusted α threshold |
+
+#### Understanding the Values
+
+- **H-statistic (Kruskal-Wallis)**: Measures the degree of separation between groups. Higher H indicates greater differences between configurations.
+- **U-statistic (Mann-Whitney)**: Counts how often values from one group exceed values from another. Useful for determining which configuration performs better.
+- **p-value**: Probability of observing the result by chance.
+  - `p < 0.05 (*)`: Statistically significant
+  - `p < 0.01 (**)`: Highly significant
+  - `p < 0.001 (***)`: Very highly significant
+- **Bonferroni α**: When comparing multiple pairs, divide α (0.05) by the number of comparisons to reduce false positives. For 3 comparisons: α = 0.05/3 ≈ 0.0167.
+
+### Effect Size Measures
+
+Statistical significance alone doesn't indicate practical importance. Effect size quantifies the magnitude of differences.
+
+| Measure       | Type           | Interpretation                                                                  |
+| ------------- | -------------- | ------------------------------------------------------------------------------- |
+| **Cohen's d** | Parametric     | \|d\| < 0.2: negligible, 0.2-0.5: small, 0.5-0.8: medium, ≥0.8: large           |
+| **Cliff's δ** | Non-parametric | \|δ\| < 0.147: negligible, 0.147-0.33: small, 0.33-0.474: medium, ≥0.474: large |
+
+#### Interpreting Effect Sizes
+
+- **Cohen's d**: Standardized difference between two means. `d = 0.5` means the groups differ by 0.5 standard deviations.
+- **Cliff's δ**: Probability that a random value from group A exceeds a random value from group B, minus the reverse. `δ = 0.6` means 80% dominance (calculated as (1+δ)/2).
+
+#### Example Interpretation
+
+```
+basic vs docstring: Cohen's d = 0.65 (medium), Cliff's δ = 0.42 (medium)
+→ docstring configuration shows a medium practical improvement over basic
+```
+
+### Confidence Intervals
+
+- **95% CI**: The true population mean lies within this range with 95% confidence.
+- **Bootstrap method**: Resamples data 5,000 times to estimate the sampling distribution.
+- **Overlapping CIs**: If confidence intervals overlap substantially, the difference may not be practically significant.
+
+#### Example Interpretation
+
+```
+basic:     78.5% (95% CI: [72.1%, 84.9%])
+docstring: 82.3% (95% CI: [77.1%, 87.5%])
+→ CIs overlap (77.1-84.9%), suggesting the difference may not be robust
+```
+
+### Example Output
+
+```
+📊 Success Rate
+────────────────────────────────────────────────────────────────────
+  📈 Descriptive Statistics (with 95% CI):
+  Config          |       Mean |      Std |          95% CI     |     n
+  basic           |      78.5% |    12.3% | [72.1%, 84.9%]      |    50
+  docstring       |      82.3% |    10.8% | [77.1%, 87.5%]      |    50
+
+  🔬 Kruskal-Wallis H-test (Overall Comparison):
+      H-statistic: 8.234
+      p-value:     0.0163 *
+      → Significant difference exists between groups
+
+  🔍 Pairwise Mann-Whitney U Tests (Bonferroni α = 0.0167):
+  basic vs docstring   |      890.5 |     0.0234 * |        Yes
+
+  📏 Effect Sizes:
+  basic vs docstring   |      0.342 |        small |      0.218 |        small
+```
+
+> **Requirement**: Statistical tests require at least 2 configuration types (e.g., basic, docstring, ast) for comparison.
 
 ## Project Structure
 
