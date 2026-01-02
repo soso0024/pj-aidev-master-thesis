@@ -20,7 +20,13 @@ import google.generativeai as genai
 from openai import OpenAI
 from dotenv import load_dotenv
 from model_utils import get_available_models, get_default_model
-from ollama_client import Ollama
+
+# Import datasets library for HumanEvalPack
+try:
+    from datasets import load_dataset
+    DATASETS_AVAILABLE = True
+except ImportError:
+    DATASETS_AVAILABLE = False
 
 
 # Constants for maintainability
@@ -55,10 +61,12 @@ class TestCaseGenerator:
         verbose_evaluation: bool = True,
         config_path: str = "models_config.json",
         ast_fix: bool = False,
+        dataset_type: str = "humaneval",
     ):
         """Initialize the test case generator with LLM clients."""
         self.api_key = api_key
         self.problems = []
+        self.dataset_type = dataset_type
 
         # Load model configuration from external file
         self.config = self._load_model_config(config_path)
@@ -123,23 +131,6 @@ class TestCaseGenerator:
                 # Will fail later if trying to use Gemini models without API key
                 clients["gemini"] = None
 
-        # Initialize Ollama client if needed
-        if "ollama" in providers_needed:
-            # Find Ollama configuration
-            ollama_base_url = None
-            for model_config in self.config["models"].values():
-                if model_config.get("provider") == "ollama":
-                    ollama_base_url = model_config.get(
-                        "base_url", "http://localhost:11434"
-                    )
-                    break
-
-            # Allow environment variable override for Ollama base URL
-            ollama_base_url = os.getenv("OLLAMA_BASE_URL", ollama_base_url)
-
-            if ollama_base_url:
-                clients["ollama"] = Ollama(base_url=ollama_base_url)
-
         # Initialize OpenAI client if needed
         if "openai" in providers_needed:
             openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -168,8 +159,15 @@ class TestCaseGenerator:
         return self.config["models"][model]["folder_name"]
 
     def load_dataset(self, file_path: str) -> None:
+        """Load the dataset based on dataset_type."""
+        if self.dataset_type == "humanevalpack":
+            self.load_humanevalpack_dataset()
+        else:
+            self.load_humaneval_dataset(file_path)
+
+    def load_humaneval_dataset(self, file_path: str) -> None:
         """Load the HumanEval dataset from JSONL file."""
-        print(f"Loading dataset from {file_path}...")
+        print(f"Loading HumanEval dataset from {file_path}...")
 
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -177,7 +175,49 @@ class TestCaseGenerator:
                     problem = json.loads(line.strip())
                     self.problems.append(problem)
 
-        print(f"Loaded {len(self.problems)} problems from dataset")
+        print(f"Loaded {len(self.problems)} problems from HumanEval dataset")
+
+    def load_humanevalpack_dataset(self) -> None:
+        """Load the HumanEvalPack dataset from Hugging Face."""
+        if not DATASETS_AVAILABLE:
+            raise ImportError(
+                "datasets library is required for HumanEvalPack. "
+                "Install it with: pip install datasets"
+            )
+
+        print("Loading HumanEvalPack dataset from Hugging Face...")
+        
+        try:
+            # Load the Python subset of HumanEvalPack
+            dataset = load_dataset("bigcode/humanevalpack", "python", split="test")
+            
+            # Convert dataset to problem format compatible with existing code
+            for item in dataset:
+                problem = {
+                    "task_id": item["task_id"],
+                    "prompt": item["prompt"],
+                    "entry_point": item["entry_point"],
+                    "canonical_solution": item["canonical_solution"],
+                    "buggy_solution": item["buggy_solution"],
+                    "bug_type": item["bug_type"],
+                    "test": item["test"],
+                }
+                self.problems.append(problem)
+            
+            print(f"Loaded {len(self.problems)} problems from HumanEvalPack dataset")
+            
+            # Print bug type distribution
+            bug_types = {}
+            for problem in self.problems:
+                bug_type = problem.get("bug_type", "unknown")
+                bug_types[bug_type] = bug_types.get(bug_type, 0) + 1
+            
+            print(f"Bug type distribution:")
+            for bug_type, count in sorted(bug_types.items()):
+                print(f"  - {bug_type}: {count}")
+                
+        except Exception as e:
+            raise RuntimeError(f"Failed to load HumanEvalPack dataset: {e}")
 
     def select_random_problem(self) -> dict[str, Any]:
         """Randomly select a problem from the dataset."""
@@ -766,6 +806,9 @@ Start your response with "import pytest" and include only executable Python test
         fix_attempts_used: int,
         c0_coverage: float = 0.0,
         c1_coverage: float = 0.0,
+        canonical_passed: bool = None,
+        buggy_failed: bool = None,
+        failure_type: str = None,
     ) -> str:
         """Update the stats file with final statistics after evaluation process.
 
@@ -791,8 +834,26 @@ Start your response with "import pytest" and include only executable Python test
                 "code_coverage_percent": c0_coverage,
                 "code_coverage_c0_percent": c0_coverage,
                 "code_coverage_c1_percent": c1_coverage,
+                "dataset_type": self.dataset_type,
             }
         )
+        
+        # Add HumanEvalPack-specific stats
+        if self.dataset_type == "humanevalpack":
+            # True bug detection only if assertion error
+            true_bug_detection = canonical_passed and buggy_failed if canonical_passed is not None else None
+            
+            final_stats.update(
+                {
+                    "bug_type": problem.get("bug_type", "unknown"),
+                    "bug_detection_success": true_bug_detection,
+                    "canonical_solution_passed": canonical_passed,
+                    "buggy_solution_failed": buggy_failed,
+                    "buggy_failure_type": failure_type,
+                    "is_true_positive": true_bug_detection and failure_type == "assertion",
+                    "is_false_positive": canonical_passed and not buggy_failed is False and failure_type not in ["assertion", "none", None],
+                }
+            )
 
         with open(final_stats_filepath, "w", encoding="utf-8") as f:
             json.dump(final_stats, f, indent=2)
@@ -1013,7 +1074,7 @@ Start your response with "import pytest" and include only executable Python test
                 return self.clean_generated_code(raw_response)
 
             else:
-                # Anthropic/Ollama API call (existing code)
+                # Anthropic API call
                 response = client.messages.create(
                     model=self.model_mapping[model],
                     max_tokens=DEFAULT_MAX_TOKENS,
@@ -1045,13 +1106,24 @@ Start your response with "import pytest" and include only executable Python test
         """Save generated test cases to a file."""
         # Create model-specific output directory
         model_folder = self.get_model_folder_name(model)
-        model_output_dir = f"{output_dir}_{model_folder}"
+        
+        # Add dataset type to directory name for HumanEvalPack
+        if self.dataset_type == "humanevalpack":
+            model_output_dir = f"{output_dir}_humanevalpack_{model_folder}"
+        else:
+            model_output_dir = f"{output_dir}_{model_folder}"
+        
         output_path = Path(model_output_dir)
         output_path.mkdir(exist_ok=True)
 
         # Create filename from task_id (no model name in filename since folder identifies model)
         base_name = f"test_{problem['task_id'].replace('/', '_').lower()}"
         filename_parts = [base_name]
+
+        # Add bug type to filename for HumanEvalPack
+        if self.dataset_type == "humanevalpack" and "bug_type" in problem:
+            bug_type_str = problem["bug_type"].replace(" ", "_")
+            filename_parts.append(bug_type_str)
 
         if self.include_docstring:
             filename_parts.append("docstring")
@@ -1117,41 +1189,44 @@ Start your response with "import pytest" and include only executable Python test
             c0_coverage = 0.0
             c1_coverage = 0.0
             if result.stdout:
-                # Look for statement coverage (C0) in format like "TOTAL    100   50   10   5   95%"
-                # Format: Name Stmts Miss Branch BrPart Cover
+                # With --cov-branch, format is: "TOTAL  Stmts  Miss  Branch  BrPart  Cover"
+                # Example: "TOTAL    75     7      16       0    84%"
+                # C0 (Statement Coverage) = (Stmts - Miss) / Stmts * 100
+                # C1 (Branch Coverage) = (Branch - BrPart) / Branch * 100
+                
                 coverage_match = re.search(
-                    r"TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)%", result.stdout
+                    r"TOTAL\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%", result.stdout
                 )
                 if coverage_match:
-                    c0_coverage = float(coverage_match.group(1))
-                else:
-                    # Fallback to old format without branch coverage "TOTAL    100   50   95%"
-                    coverage_match = re.search(
-                        r"TOTAL\s+\d+\s+\d+\s+(\d+)%", result.stdout
-                    )
-                    if coverage_match:
-                        c0_coverage = float(coverage_match.group(1))
-
-                # Extract branch coverage (C1) from the same line
-                # With --cov-branch, the output includes branch coverage separately
-                # We need to calculate it from Branch and BrPart columns
-                branch_match = re.search(
-                    r"TOTAL\s+\d+\s+\d+\s+(\d+)\s+(\d+)\s+\d+%", result.stdout
-                )
-                if branch_match:
-                    total_branches = int(branch_match.group(1))
-                    partial_branches = int(branch_match.group(2))
+                    total_stmts = int(coverage_match.group(1))
+                    missed_stmts = int(coverage_match.group(2))
+                    total_branches = int(coverage_match.group(3))
+                    partial_branches = int(coverage_match.group(4))
+                    
+                    # Calculate C0 (Statement Coverage)
+                    if total_stmts > 0:
+                        c0_coverage = ((total_stmts - missed_stmts) / total_stmts) * 100
+                    else:
+                        c0_coverage = 100.0
+                    
+                    # Calculate C1 (Branch Coverage)
                     if total_branches > 0:
-                        # Branch coverage = (covered branches / total branches) * 100
-                        # Covered branches = total branches - partial branches
-                        c1_coverage = (
-                            (total_branches - partial_branches) / total_branches
-                        ) * 100
+                        c1_coverage = ((total_branches - partial_branches) / total_branches) * 100
                     else:
                         c1_coverage = 100.0  # No branches means 100% coverage
                 else:
-                    # If no branches exist, set C1 to 100%
-                    c1_coverage = 100.0
+                    # Fallback to old format without branch coverage "TOTAL  Stmts  Miss  Cover%"
+                    coverage_match = re.search(
+                        r"TOTAL\s+(\d+)\s+(\d+)\s+(\d+)%", result.stdout
+                    )
+                    if coverage_match:
+                        total_stmts = int(coverage_match.group(1))
+                        missed_stmts = int(coverage_match.group(2))
+                        if total_stmts > 0:
+                            c0_coverage = ((total_stmts - missed_stmts) / total_stmts) * 100
+                        else:
+                            c0_coverage = 100.0
+                        c1_coverage = 100.0  # No branch coverage available
 
             return success, output, c0_coverage, c1_coverage
 
@@ -1350,7 +1425,7 @@ Corrected code:"""
                 cleaned_response = self.clean_generated_code(raw_response)
 
             else:
-                # Anthropic/Ollama API call (existing code)
+                # Anthropic API call
                 response = client.messages.create(
                     model=self.model_mapping[model],
                     max_tokens=DEFAULT_MAX_TOKENS,
@@ -1384,6 +1459,182 @@ Corrected code:"""
         except Exception as e:
             print(f"❌ Error fixing test cases: {e}")
             return test_code  # Return original code if fixing fails
+
+    def _analyze_failure_type(self, error_output: str) -> str:
+        """Analyze pytest output to determine the type of failure.
+        
+        Args:
+            error_output: The complete pytest output
+            
+        Returns:
+            str: Type of failure ('assertion', 'syntax', 'import', 'runtime', 'timeout', 'unknown')
+        """
+        output_lower = error_output.lower()
+        
+        # Check for different error types
+        if "assertionerror" in output_lower or "assert " in output_lower:
+            return "assertion"
+        elif "syntaxerror" in output_lower:
+            return "syntax"
+        elif "importerror" in output_lower or "modulenotfounderror" in output_lower:
+            return "import"
+        elif "nameerror" in output_lower:
+            return "name"
+        elif "typeerror" in output_lower:
+            return "type"
+        elif "indexerror" in output_lower:
+            return "index"
+        elif "keyerror" in output_lower:
+            return "key"
+        elif "attributeerror" in output_lower:
+            return "attribute"
+        elif "valueerror" in output_lower:
+            return "value"
+        elif "zerodivisionerror" in output_lower:
+            return "zerodivision"
+        elif "recursionerror" in output_lower:
+            return "recursion"
+        elif "timeoutexpired" in output_lower or "timeout" in output_lower:
+            return "timeout"
+        else:
+            return "unknown"
+
+    def evaluate_bug_detection(
+        self, test_file_path: str, problem: dict[str, Any]
+    ) -> tuple[bool, bool, str, float, float]:
+        """Evaluate if generated tests can detect bugs in HumanEvalPack.
+        
+        Returns:
+            tuple[bool, bool, str, float, float]: (canonical_passed, buggy_failed_with_assertion, failure_type, final_c0_coverage, final_c1_coverage)
+        """
+        print(f"\n{'='*80}")
+        print(f"🔍 BUG DETECTION EVALUATION")
+        print(f"{'='*80}")
+        print(f"Bug type: {problem.get('bug_type', 'unknown')}")
+        
+        # Phase 1: Test with canonical solution (should pass)
+        # This also captures the final coverage with canonical solution
+        print(f"\n📗 Phase 1: Testing with canonical solution...")
+        canonical_success, _, final_c0_coverage, final_c1_coverage = self.run_pytest(test_file_path)
+        
+        if canonical_success:
+            print(f"✅ Canonical solution: Tests PASSED (C0: {final_c0_coverage:.1f}%, C1: {final_c1_coverage:.1f}%)")
+        else:
+            print(f"❌ Canonical solution: Tests FAILED (unexpected)")
+        
+        # Phase 2: Replace with buggy solution and test (should fail)
+        print(f"\n📕 Phase 2: Testing with buggy solution...")
+        
+        # Read the test file
+        with open(test_file_path, "r", encoding="utf-8") as f:
+            original_content = f.read()
+        
+        # Replace canonical_solution with buggy_solution
+        canonical_solution = problem.get("canonical_solution", "")
+        buggy_solution = problem.get("buggy_solution", "")
+        
+        if not buggy_solution:
+            print(f"⚠️  No buggy solution available for this problem")
+            return canonical_success, False, "no_buggy_solution", final_c0_coverage, final_c1_coverage
+        
+        # Create modified content with buggy solution
+        modified_content = original_content.replace(canonical_solution, buggy_solution)
+        
+        # Write modified content to file
+        with open(test_file_path, "w", encoding="utf-8") as f:
+            f.write(modified_content)
+        
+        try:
+            # Run pytest with buggy solution
+            buggy_success, error_output, _, _ = self.run_pytest(test_file_path)
+            
+            failure_type = "none"
+            true_bug_detected = False
+            
+            if not buggy_success:
+                # Analyze the type of failure
+                failure_type = self._analyze_failure_type(error_output)
+                
+                if failure_type == "assertion":
+                    print(f"✅ Buggy solution: Tests FAILED with AssertionError")
+                    print(f"🎯 TRUE BUG DETECTED: Test cases correctly identified incorrect behavior!")
+                    true_bug_detected = True
+                else:
+                    print(f"⚠️  Buggy solution: Tests FAILED with {failure_type.upper()} error")
+                    print(f"⚠️  This is NOT a true bug detection (runtime error, not logic error)")
+                    true_bug_detected = False
+            else:
+                print(f"❌ Buggy solution: Tests PASSED (bug NOT detected)")
+                failure_type = "none"
+            
+            # Save buggy version to a separate file
+            buggy_file_path = self._save_buggy_version(test_file_path, modified_content)
+            if buggy_file_path:
+                print(f"💾 Buggy version saved to: {Path(buggy_file_path).name}")
+            
+            # Restore original content
+            with open(test_file_path, "w", encoding="utf-8") as f:
+                f.write(original_content)
+            
+            print(f"\n{'='*80}")
+            if canonical_success and true_bug_detected:
+                print(f"🎉 BUG DETECTION: SUCCESS (True Positive)")
+                print(f"   ✓ Canonical solution passed")
+                print(f"   ✓ Buggy solution failed with AssertionError")
+                print(f"   ✓ Test cases detected incorrect logic!")
+            elif canonical_success and not buggy_success:
+                print(f"⚠️  BUG DETECTION: FALSE POSITIVE")
+                print(f"   ✓ Canonical solution passed")
+                print(f"   ✗ Buggy solution failed with {failure_type.upper()} error (not assertion)")
+                print(f"   ✗ This is a runtime error, not a logic error detection")
+            elif not canonical_success:
+                print(f"⚠️  BUG DETECTION: INCONCLUSIVE")
+                print(f"   ✗ Canonical solution failed")
+                print(f"   → Cannot evaluate bug detection capability")
+            else:
+                print(f"❌ BUG DETECTION: FAILED (False Negative)")
+                print(f"   ✓ Canonical solution passed")
+                print(f"   ✗ Buggy solution passed (bug NOT detected)")
+                print(f"   ✗ Test cases missed the bug")
+            print(f"{'='*80}\n")
+            
+            return canonical_success, true_bug_detected, failure_type, final_c0_coverage, final_c1_coverage
+            
+        except Exception as e:
+            print(f"❌ Error during bug detection evaluation: {e}")
+            # Restore original content on error
+            with open(test_file_path, "w", encoding="utf-8") as f:
+                f.write(original_content)
+            return canonical_success, False, "exception", final_c0_coverage, final_c1_coverage
+
+    def _save_buggy_version(self, original_file_path: str, buggy_content: str) -> str:
+        """Save a separate file containing the buggy solution version.
+        
+        Args:
+            original_file_path: Path to the original test file
+            buggy_content: Content with buggy solution
+        
+        Returns:
+            str: Path to the saved buggy version file
+        """
+        try:
+            original_path = Path(original_file_path)
+            
+            # Create buggy version filename
+            # e.g., test_python_0_missing_logic_success.py -> test_python_0_missing_logic_success_buggy.py
+            stem = original_path.stem
+            buggy_filename = f"{stem}_buggy{original_path.suffix}"
+            buggy_file_path = original_path.parent / buggy_filename
+            
+            # Write buggy version to file
+            with open(buggy_file_path, "w", encoding="utf-8") as f:
+                f.write(buggy_content)
+            
+            return str(buggy_file_path)
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save buggy version: {e}")
+            return None
 
     def evaluate_and_fix_tests(
         self, test_file_path: str, problem: dict[str, Any], model: str
@@ -1517,11 +1768,45 @@ Corrected code:"""
             fix_attempts_used = 0
             c0_coverage = 0.0
             c1_coverage = 0.0
+            canonical_passed = None
+            buggy_failed = None
+            failure_type = None
 
             if self.enable_evaluation:
                 evaluation_success, fix_attempts_used, c0_coverage, c1_coverage = (
                     self.evaluate_and_fix_tests(filepath, problem, model)
                 )
+                
+                # For HumanEvalPack, run additional bug detection evaluation
+                if self.dataset_type == "humanevalpack" and evaluation_success:
+                    print(f"\n📊 Coverage before bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
+                    
+                    canonical_passed, buggy_failed, failure_type, bug_c0_cov, bug_c1_cov = self.evaluate_bug_detection(
+                        filepath, problem
+                    )
+                    # Update coverage with the final values from bug detection evaluation
+                    # (which re-runs tests with canonical solution to get accurate coverage)
+                    c0_coverage = bug_c0_cov
+                    c1_coverage = bug_c1_cov
+                    
+                    print(f"📊 Coverage after bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
+                    print(f"📊 Final coverage to be saved: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
+                    
+                    bug_detection_success = canonical_passed and buggy_failed
+                    
+                    if bug_detection_success:
+                        print(
+                            f"🎉 Test generation completed with TRUE bug detection for {model}!"
+                        )
+                    elif failure_type != "none":
+                        print(
+                            f"⚠️  Test generation completed but detected {failure_type.upper()} error (not true bug) for {model}"
+                        )
+                    else:
+                        print(
+                            f"⚠️  Test generation completed but bug detection failed for {model}"
+                        )
+                
                 if evaluation_success:
                     print(
                         f"🎉 Test generation and evaluation completed successfully for {model}!"
@@ -1558,6 +1843,9 @@ Corrected code:"""
                 fix_attempts_used,
                 c0_coverage,
                 c1_coverage,
+                canonical_passed,
+                buggy_failed,
+                failure_type,
             )
 
             final_filepaths.append(final_filepath)
@@ -1706,6 +1994,12 @@ def main():
         action="store_true",
         help="Enable AST-focused error fixing (adds relevant AST snippet to LLM fix prompts)",
     )
+    parser.add_argument(
+        "--dataset-type",
+        choices=["humaneval", "humanevalpack"],
+        default="humaneval",
+        help="Dataset to use for test generation (default: humaneval)",
+    )
 
     args = parser.parse_args()
 
@@ -1749,7 +2043,6 @@ def main():
         print("  1. --api-key argument")
         print("  2. ANTHROPIC_API_KEY environment variable")
         print("  3. Set ANTHROPIC_API_KEY in .env file")
-        print("\nOr use Ollama models which don't require an API key.")
         return 1
 
     if needs_openai and not os.getenv("OPENAI_API_KEY"):
@@ -1778,6 +2071,7 @@ def main():
             max_fix_attempts=args.max_fix_attempts,
             verbose_evaluation=not args.quiet_evaluation,
             ast_fix=args.ast_fix,
+            dataset_type=args.dataset_type,
         )
 
         # Load dataset

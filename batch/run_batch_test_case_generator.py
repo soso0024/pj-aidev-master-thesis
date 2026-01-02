@@ -37,6 +37,7 @@ class BatchTestGenerator:
         task_timeout: int = 300,
         output_dir: str = "generated_tests",
         dataset: str = "dataset/HumanEval.jsonl",
+        dataset_type: str = "humaneval",
     ):
         """Initialize the batch generator with configuration."""
         self.start_id = start_id
@@ -53,6 +54,7 @@ class BatchTestGenerator:
             output_dir  # Just store as string, no need to create directory
         )
         self.dataset = dataset
+        self.dataset_type = dataset_type
 
         # Statistics tracking
         self.total_tasks = 0
@@ -73,6 +75,8 @@ class BatchTestGenerator:
             str(self.output_dir),
             "--max-fix-attempts",
             str(self.max_fix_attempts),
+            "--dataset-type",
+            self.dataset_type,
             "--models",
         ]
 
@@ -143,6 +147,7 @@ class BatchTestGenerator:
         print(f"🎯 Starting batch generation for {self.total_tasks} tasks")
         print(f"📁 Output directory: {self.output_dir}")
         print(f"🔧 Configuration:")
+        print(f"  - Dataset type: {self.dataset_type}")
         print(f"  - Models: {', '.join(self.models)}")
         print(f"  - Include docstrings: {self.include_docstring}")
         print(f"  - Include AST: {self.include_ast}")
@@ -307,6 +312,12 @@ Examples:
         default=300,
         help="Timeout in seconds for each individual task (default: 300)",
     )
+    parser.add_argument(
+        "--dataset-type",
+        choices=["humaneval", "humanevalpack"],
+        default="humaneval",
+        help="Dataset to use for test generation (default: humaneval)",
+    )
 
     args = parser.parse_args()
 
@@ -347,6 +358,7 @@ Examples:
             task_timeout=args.task_timeout,
             output_dir=args.output_dir,
             dataset=args.dataset,
+            dataset_type=args.dataset_type,
         )
 
         batch_gen.run_batch(task_ids)
