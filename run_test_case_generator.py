@@ -15,15 +15,16 @@ import subprocess
 import requests
 from pathlib import Path
 from typing import Any, Optional
-import anthropic
-import google.generativeai as genai
-from openai import OpenAI
 from dotenv import load_dotenv
 from model_utils import get_available_models, get_default_model
+from prompts import PromptBuilder
+from llm_clients import create_clients_for_models, get_client_for_model, LLMResponse
+from evaluator import TestRunner, BugDetector, FailureAnalyzer
 
 # Import datasets library for HumanEvalPack
 try:
     from datasets import load_dataset
+
     DATASETS_AVAILABLE = True
 except ImportError:
     DATASETS_AVAILABLE = False
@@ -74,9 +75,6 @@ class TestCaseGenerator:
             model: config["api_name"] for model, config in self.config["models"].items()
         }
 
-        # Initialize clients for different providers
-        self.clients = self._initialize_clients()
-
         # Set default model if none provided
         if models is None:
             models = [self.config["default_model"]]
@@ -91,6 +89,9 @@ class TestCaseGenerator:
                     f"Unsupported model: {model}. Supported models: {list(self.model_mapping.keys())}"
                 )
 
+        # Initialize clients for different providers (after models are set)
+        self.clients = self._initialize_clients()
+
         self.include_docstring = include_docstring
         self.include_ast = include_ast
         self.show_prompt = show_prompt
@@ -103,44 +104,26 @@ class TestCaseGenerator:
         # Whether to include a focused AST snippet in error-fix prompts
         self.ast_fix = ast_fix
 
+        # Initialize prompt builder for dynamic template loading
+        self.prompt_builder = PromptBuilder()
+
+        # Initialize evaluator components
+        self.test_runner = TestRunner(timeout=PYTEST_TIMEOUT_SECONDS)
+        self.bug_detector = BugDetector(
+            test_runner=self.test_runner, verbose=self.verbose_evaluation
+        )
+        self.failure_analyzer = FailureAnalyzer()
+
     def _initialize_clients(self) -> dict[str, Any]:
-        """Initialize clients for different LLM providers."""
-        clients = {}
+        """Initialize clients for different LLM providers.
 
-        # Check which providers are needed
-        providers_needed = set()
-        for model_config in self.config["models"].values():
-            provider = model_config.get("provider", "anthropic")
-            providers_needed.add(provider)
-
-        # Initialize Anthropic client if needed
-        if "anthropic" in providers_needed:
-            if self.api_key:
-                clients["anthropic"] = anthropic.Anthropic(api_key=self.api_key)
-            else:
-                # Will fail later if trying to use Anthropic models without API key
-                clients["anthropic"] = None
-
-        # Initialize Gemini client if needed
-        if "gemini" in providers_needed:
-            gemini_api_key = os.getenv("GEMINI_API_KEY")
-            if gemini_api_key:
-                genai.configure(api_key=gemini_api_key)
-                clients["gemini"] = genai  # Store the module itself as the client
-            else:
-                # Will fail later if trying to use Gemini models without API key
-                clients["gemini"] = None
-
-        # Initialize OpenAI client if needed
-        if "openai" in providers_needed:
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if openai_api_key:
-                clients["openai"] = OpenAI(api_key=openai_api_key)
-            else:
-                # Will fail later if trying to use OpenAI models without API key
-                clients["openai"] = None
-
-        return clients
+        Uses the llm_clients module for a cleaner, more maintainable implementation.
+        """
+        return create_clients_for_models(
+            models_config=self.config,
+            selected_models=self.models,
+            anthropic_api_key=self.api_key,
+        )
 
     def _load_model_config(self, config_path: str) -> dict[str, Any]:
         """Load model configuration from JSON file."""
@@ -224,78 +207,22 @@ class TestCaseGenerator:
         return random.choice(self.problems)
 
     def extract_function_signature(self, prompt: str, entry_point: str) -> str:
-        """Extract just the function signature without docstring."""
-        lines = prompt.split("\n")
-        signature_lines = []
-        in_signature = False
+        """Extract just the function signature without docstring.
 
-        for line in lines:
-            if line.strip().startswith(f"def {entry_point}("):
-                in_signature = True
-                signature_lines.append(line)
-            elif in_signature:
-                if line.strip().startswith('"""') or line.strip().startswith("'''"):
-                    # Stop at docstring
-                    break
-                elif (
-                    line.strip()
-                    and not line.startswith(" ")
-                    and not line.startswith("\t")
-                ):
-                    # Stop at next top-level statement
-                    break
-                else:
-                    signature_lines.append(line)
-                    if line.strip().endswith(":"):
-                        # End of function signature
-                        break
-
-        return "\n".join(signature_lines)
+        Delegates to PromptBuilder for consistency.
+        """
+        return self.prompt_builder.extract_function_signature(prompt, entry_point)
 
     def generate_ast_string(
         self, canonical_solution: str, prompt: str, entry_point: str
     ) -> str:
-        """Generate a readable AST representation of the canonical solution."""
-        try:
-            # Extract function signature from the prompt more robustly
-            # Find the def line and continue until we hit the docstring or end of signature
-            lines = prompt.split("\n")
-            signature_lines = []
-            signature_started = False
+        """Generate a readable AST representation of the canonical solution.
 
-            for line in lines:
-                if line.strip().startswith(f"def {entry_point}("):
-                    signature_started = True
-                    signature_lines.append(line.strip())
-                elif signature_started:
-                    if line.strip().startswith('"""') or line.strip().startswith("'''"):
-                        # Hit docstring, stop
-                        break
-                    elif line.strip().endswith(":") or line.strip() == "":
-                        # End of signature or empty line
-                        if line.strip().endswith(":"):
-                            signature_lines.append(line.strip())
-                        break
-                    else:
-                        signature_lines.append(line.strip())
-
-            if not signature_lines:
-                return "Error: Could not extract function signature"
-
-            signature = " ".join(signature_lines)
-            if not signature.endswith(":"):
-                signature += ":"
-
-            # Create complete function code
-            full_function = f"{signature}\n{canonical_solution}"
-
-            # Parse the AST
-            tree = ast.parse(full_function)
-
-            # Format the AST as a readable string
-            return ast.dump(tree, indent=2)
-        except Exception as e:
-            return f"Error generating AST: {e}"
+        Delegates to PromptBuilder for consistency.
+        """
+        return self.prompt_builder.generate_ast_string(
+            canonical_solution, prompt, entry_point
+        )
 
     # --- Helper methods to keep generate_relevant_ast_snippet maintainable ---
     def _normalize_line(self, s: str) -> str:
@@ -620,51 +547,16 @@ class TestCaseGenerator:
             return f"Error generating relevant AST snippet: {e}"
 
     def generate_prompt(self, problem: dict[str, Any]) -> str:
-        """Create a prompt for Claude to generate test cases."""
+        """Create a prompt for Claude to generate test cases.
 
-        # Optionally include function signature/docstring section.
-        # If --include-docstring is NOT set, omit this section entirely to avoid redundancy
-        # since the canonical implementation below already includes the signature.
-        signature_section = ""
-        if self.include_docstring:
-            # Include full function definition (signature + docstring)
-            function_info = problem["prompt"]
-            signature_section = f"\nSignature and Docstring:\n{function_info}\n\n"
-
-        ast_section = ""
-        if self.include_ast:
-            ast_repr = self.generate_ast_string(
-                problem["canonical_solution"], problem["prompt"], problem["entry_point"]
-            )
-            ast_section = f"""
-
-AST representation of canonical solution:
-```
-{ast_repr}
-```"""
-
-        prompt = f"""Generate pytest test cases for this function. Return ONLY executable Python code, no explanations or markdown.
-
-{signature_section}Canonical implementation:
-```python
-{self.extract_function_signature(problem['prompt'], problem['entry_point'])}
-{problem['canonical_solution']}
-```{ast_section}
-
-Requirements:
-- Return ONLY Python code that can be executed directly
-- Include comprehensive test cases covering edge cases, normal cases, and error conditions
-- Use pytest format
-- Include necessary imports
-- DO NOT include explanations, markdown, or the original function implementation
-- DO NOT wrap code in ```python``` blocks
-- IMPORTANT: When using @pytest.mark.parametrize, properly escape quotes in parameter values
-- Use single quotes inside double quotes or vice versa, or use triple quotes for complex strings
-- Example: @pytest.mark.parametrize("input,expected", [("test", True), ('another', False)])
-
-Start your response with "import pytest" and include only executable Python test code:"""
-
-        return prompt
+        Uses PromptBuilder for dynamic template loading to ensure
+        research reproducibility.
+        """
+        return self.prompt_builder.build_prompt(
+            problem=problem,
+            include_docstring=self.include_docstring,
+            include_ast=self.include_ast,
+        )
 
     def clean_generated_code(self, raw_response: str) -> str:
         """Clean the generated response to extract only executable Python code."""
@@ -835,13 +727,26 @@ Start your response with "import pytest" and include only executable Python test
                 "code_coverage_c0_percent": c0_coverage,
                 "code_coverage_c1_percent": c1_coverage,
                 "dataset_type": self.dataset_type,
+                # Add prompt template info for reproducibility
+                "prompt_config": {
+                    "include_docstring": self.include_docstring,
+                    "include_ast": self.include_ast,
+                    "ast_fix": self.ast_fix,
+                    "template_hash": self.prompt_builder.get_template_hash(
+                        self.include_docstring, self.include_ast
+                    ),
+                },
             }
         )
         
         # Add HumanEvalPack-specific stats
         if self.dataset_type == "humanevalpack":
             # True bug detection only if assertion error
-            true_bug_detection = canonical_passed and buggy_failed if canonical_passed is not None else None
+            true_bug_detection = (
+                canonical_passed and buggy_failed
+                if canonical_passed is not None
+                else None
+            )
             
             final_stats.update(
                 {
@@ -850,8 +755,11 @@ Start your response with "import pytest" and include only executable Python test
                     "canonical_solution_passed": canonical_passed,
                     "buggy_solution_failed": buggy_failed,
                     "buggy_failure_type": failure_type,
-                    "is_true_positive": true_bug_detection and failure_type == "assertion",
-                    "is_false_positive": canonical_passed and not buggy_failed is False and failure_type not in ["assertion", "none", None],
+                    "is_true_positive": true_bug_detection
+                    and failure_type == "assertion",
+                    "is_false_positive": canonical_passed
+                    and not buggy_failed is False
+                    and failure_type not in ["assertion", "none", None],
                 }
             )
 
@@ -985,7 +893,10 @@ Start your response with "import pytest" and include only executable Python test
         print(f"{'─'*80}\n")
 
     def generate_test_cases(self, problem: dict[str, Any], model: str) -> str:
-        """Generate test cases using LLM API."""
+        """Generate test cases using LLM API.
+
+        Uses the unified LLM client interface for cleaner code.
+        """
         prompt = self.generate_prompt(problem)
 
         print(f"Generating test cases for {problem['task_id']} using {model}...")
@@ -996,106 +907,31 @@ Start your response with "import pytest" and include only executable Python test
                 return ""
 
         try:
-            # Get the provider for this model
-            provider = self.config["models"][model].get("provider", "anthropic")
-            client = self.clients.get(provider)
+            # Get the appropriate client for this model
+            client = get_client_for_model(self.clients, model, self.config)
 
-            if not client:
-                if provider == "anthropic":
-                    raise ValueError(f"Anthropic API key required for model {model}")
-                elif provider == "gemini":
-                    raise ValueError(f"Gemini API key required for model {model}")
-                elif provider == "openai":
-                    raise ValueError(f"OpenAI API key required for model {model}")
-                else:
-                    raise ValueError(f"Client not initialized for provider {provider}")
+            # Generate response using unified interface
+            response: LLMResponse = client.generate(
+                prompt=prompt,
+                model=self.model_mapping[model],
+                max_tokens=DEFAULT_MAX_TOKENS,
+            temperature=DEFAULT_TEMPERATURE,
+            )
 
-            # Handle different provider APIs
-            if provider == "gemini":
-                # Gemini API call
-                gemini_model = client.GenerativeModel(self.model_mapping[model])
-                response = gemini_model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=DEFAULT_MAX_TOKENS,
-                        temperature=DEFAULT_TEMPERATURE,
-                    ),
-                )
+            # Track token usage and cost
+            self.total_input_tokens += response.input_tokens
+            self.total_output_tokens += response.output_tokens
 
-                # Check if response was blocked or has no candidates
-                if not response.candidates:
-                    if response.prompt_feedback and hasattr(
-                        response.prompt_feedback, "block_reason"
-                    ):
-                        print(
-                            f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}"
-                        )
-                    else:
-                        print("❌ Gemini API returned no candidates.")
-                    return ""
+            cost = self.calculate_cost(
+                response.input_tokens, response.output_tokens, model
+            )
+            self.total_cost += cost
 
-                # Track token usage and cost
-                input_tokens = response.usage_metadata.prompt_token_count
-                output_tokens = response.usage_metadata.candidates_token_count
+            return self.clean_generated_code(response.content)
 
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                cost = self.calculate_cost(input_tokens, output_tokens, model)
-                self.total_cost += cost
-
-                raw_response = response.text
-                return self.clean_generated_code(raw_response)
-
-            elif provider == "openai":
-                # OpenAI API call using standard v1/chat/completions endpoint
-                response = client.chat.completions.create(
-                    model=self.model_mapping[model],
-                    max_tokens=DEFAULT_MAX_TOKENS,
-                    temperature=0.0,  # Set to 0 for deterministic responses
-                    top_p=1.0,  # Explicitly set to default for consistency
-                    frequency_penalty=0.0,  # No penalty for token frequency
-                    presence_penalty=0.0,  # No penalty for token presence
-                    seed=42,  # Fixed seed for reproducible outputs
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Track token usage and cost
-                input_tokens = response.usage.prompt_tokens
-                output_tokens = response.usage.completion_tokens
-
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                cost = self.calculate_cost(input_tokens, output_tokens, model)
-                self.total_cost += cost
-
-                raw_response = response.choices[0].message.content
-                return self.clean_generated_code(raw_response)
-
-            else:
-                # Anthropic API call
-                response = client.messages.create(
-                    model=self.model_mapping[model],
-                    max_tokens=DEFAULT_MAX_TOKENS,
-                    temperature=DEFAULT_TEMPERATURE,  # A temperature of 0.0 results in the most deterministic and consistent responses, as the model will consistently choose the most probable words and sequences.
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Track token usage and cost
-                usage = response.usage
-                input_tokens = usage.input_tokens
-                output_tokens = usage.output_tokens
-
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                cost = self.calculate_cost(input_tokens, output_tokens, model)
-                self.total_cost += cost
-
-                raw_response = response.content[0].text
-                return self.clean_generated_code(raw_response)
-
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            return ""
         except Exception as e:
             print(f"❌ Error generating test cases with {model}: {e}")
             return ""
@@ -1163,82 +999,18 @@ Start your response with "import pytest" and include only executable Python test
         return str(filepath)
 
     def run_pytest(self, test_file_path: str) -> tuple[bool, str, float, float]:
-        """Run pytest on the test file and return (success, error_output, c0_coverage, c1_coverage)."""
+        """Run pytest on the test file and return (success, error_output, c0_coverage, c1_coverage).
 
-        # Use absolute path and run from project root
-        abs_path = Path(test_file_path).resolve()
-        cmd = ["pytest", str(abs_path), "--cov", "--cov-branch", "-v"]
+        Delegates to TestRunner for cleaner code.
+        """
+        result = self.test_runner.run_pytest(test_file_path)
 
-        try:
-            # Run pytest and capture output
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=PYTEST_TIMEOUT_SECONDS,
-                cwd=Path.cwd(),  # Run from current working directory
-            )
+        # Handle error messages
+        output = result.output
+        if result.error_message:
+            output = f"Error: {result.error_message}"
 
-            # Check if tests passed (return code 0)
-            success = result.returncode == 0
-
-            # Combine stdout and stderr for complete error information
-            output = f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
-
-            # Extract coverage percentages from pytest output
-            c0_coverage = 0.0
-            c1_coverage = 0.0
-            if result.stdout:
-                # With --cov-branch, format is: "TOTAL  Stmts  Miss  Branch  BrPart  Cover"
-                # Example: "TOTAL    75     7      16       0    84%"
-                # C0 (Statement Coverage) = (Stmts - Miss) / Stmts * 100
-                # C1 (Branch Coverage) = (Branch - BrPart) / Branch * 100
-                
-                coverage_match = re.search(
-                    r"TOTAL\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%", result.stdout
-                )
-                if coverage_match:
-                    total_stmts = int(coverage_match.group(1))
-                    missed_stmts = int(coverage_match.group(2))
-                    total_branches = int(coverage_match.group(3))
-                    partial_branches = int(coverage_match.group(4))
-                    
-                    # Calculate C0 (Statement Coverage)
-                    if total_stmts > 0:
-                        c0_coverage = ((total_stmts - missed_stmts) / total_stmts) * 100
-                    else:
-                        c0_coverage = 100.0
-                    
-                    # Calculate C1 (Branch Coverage)
-                    if total_branches > 0:
-                        c1_coverage = ((total_branches - partial_branches) / total_branches) * 100
-                    else:
-                        c1_coverage = 100.0  # No branches means 100% coverage
-                else:
-                    # Fallback to old format without branch coverage "TOTAL  Stmts  Miss  Cover%"
-                    coverage_match = re.search(
-                        r"TOTAL\s+(\d+)\s+(\d+)\s+(\d+)%", result.stdout
-                    )
-                    if coverage_match:
-                        total_stmts = int(coverage_match.group(1))
-                        missed_stmts = int(coverage_match.group(2))
-                        if total_stmts > 0:
-                            c0_coverage = ((total_stmts - missed_stmts) / total_stmts) * 100
-                        else:
-                            c0_coverage = 100.0
-                        c1_coverage = 100.0  # No branch coverage available
-
-            return success, output, c0_coverage, c1_coverage
-
-        except subprocess.TimeoutExpired:
-            return (
-                False,
-                f"Error: pytest execution timed out after {PYTEST_TIMEOUT_SECONDS} seconds",
-                0.0,
-                0.0,
-            )
-        except Exception as e:
-            return False, f"Error running pytest: {str(e)}", 0.0, 0.0
+        return result.success, output, result.c0_coverage, result.c1_coverage
 
     def generate_fix_prompt(
         self,
@@ -1248,71 +1020,20 @@ Start your response with "import pytest" and include only executable Python test
         problem: dict[str, Any],
         ast_snippet: Optional[str] = None,
     ) -> str:
-        """Generate a prompt to fix test case errors with white box testing approach."""
-        ast_section = ""
-        if self.include_ast:
-            # Include full AST representation like in initial prompt
-            ast_repr = self.generate_ast_string(
-                problem["canonical_solution"], problem["prompt"], problem["entry_point"]
-            )
-            ast_section = (
-                f"\n\nAST representation of canonical solution:\n```\n{ast_repr}\n```\n"
-            )
-        elif self.ast_fix and ast_snippet:
-            # Include relevant AST snippet if ast_fix is enabled but not full AST
-            ast_section = f"\n\nRELEVANT AST SNIPPET OF FUNCTION (focus on error):\n```\n{ast_snippet}\n```\n"
+        """Generate a prompt to fix test case errors with white box testing approach.
 
-        # Distinguish between pytest attempts and fix attempts for clarity in the prompt
-        # A fix prompt is only shown when attempt <= self.max_fix_attempts, so fix attempt index == attempt
-        total_fix_attempts = self.get_total_fix_attempts()
-        fix_attempt_line = f"This is fix attempt {attempt} of {total_fix_attempts}."
-
-        # Get function info based on include_docstring flag
-        if self.include_docstring:
-            function_info = problem.get("prompt", "")
-        else:
-            entry_point = problem.get("entry_point")
-            if entry_point and entry_point.strip():
-                function_info = self.extract_function_signature(
-                    problem.get("prompt", ""), entry_point
-                )
-            else:
-                # Fallback gracefully when entry_point is missing or empty in problem dict
-                function_info = problem.get("prompt", "")
-
-        return f"""The following test code has errors when running pytest. Please fix the issues and return ONLY the corrected Python code, no explanations or markdown.
-
-FUNCTION BEING TESTED:
-```python
-{function_info}
-{problem['canonical_solution']}
-```
-{ast_section}
-
-CURRENT TEST CODE WITH ERRORS:
-```python
-{original_code}
-```
-
-PYTEST ERROR OUTPUT:
-```
-{error_output}
-```
-
- {fix_attempt_line}
-
-Requirements:
-- Return ONLY executable Python code that can be run directly
-- Fix all syntax errors, import errors, and test failures
-- Use the provided function implementation to understand expected behavior
-- Ensure tests properly validate the function's actual behavior
-- Maintain comprehensive test coverage
-- DO NOT include explanations, markdown, or code blocks
-- DO NOT wrap code in ```python``` blocks
-- DO NOT include the function implementation in your response (it's already in the file)
-- Start your response with the corrected imports
-
-Corrected code:"""
+        Uses PromptBuilder for consistent prompt generation.
+        """
+        return self.prompt_builder.build_fix_prompt(
+            problem=problem,
+            test_code=original_code,
+            error_output=error_output,
+            attempt=attempt,
+            max_attempts=self.get_total_fix_attempts(),
+            include_docstring=self.include_docstring,
+            include_ast=self.include_ast,
+            ast_snippet=ast_snippet if self.ast_fix else None,
+        )
 
     def fix_test_cases(
         self,
@@ -1322,7 +1043,10 @@ Corrected code:"""
         problem: dict[str, Any],
         model: str,
     ) -> str:
-        """Use LLM to fix test case errors."""
+        """Use LLM to fix test case errors.
+
+        Uses the unified LLM client interface for cleaner code.
+        """
         ast_snippet: Optional[str] = None
         if self.ast_fix:
             ast_snippet = self.generate_relevant_ast_snippet(problem, error_output)
@@ -1339,129 +1063,50 @@ Corrected code:"""
         try:
             print(f"🤖 Sending fix request to LLM (attempt {attempt}) using {model}...")
 
-            # Get the provider for this model
-            provider = self.config["models"][model].get("provider", "anthropic")
-            client = self.clients.get(provider)
+            # Get the appropriate client for this model
+            client = get_client_for_model(self.clients, model, self.config)
 
-            if not client:
-                if provider == "anthropic":
-                    raise ValueError(f"Anthropic API key required for model {model}")
-                elif provider == "gemini":
-                    raise ValueError(f"Gemini API key required for model {model}")
-                elif provider == "openai":
-                    raise ValueError(f"OpenAI API key required for model {model}")
-                else:
-                    raise ValueError(f"Client not initialized for provider {provider}")
+            # Generate response using unified interface
+            response: LLMResponse = client.generate(
+                prompt=fix_prompt,
+                model=self.model_mapping[model],
+                max_tokens=DEFAULT_MAX_TOKENS,
+                temperature=DEFAULT_TEMPERATURE,
+            )
 
-            # Handle different provider APIs
-            if provider == "gemini":
-                # Gemini API call
-                gemini_model = client.GenerativeModel(self.model_mapping[model])
-                response = gemini_model.generate_content(
-                    fix_prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=DEFAULT_MAX_TOKENS,
-                        temperature=DEFAULT_TEMPERATURE,
-                    ),
+            # Track token usage and cost
+            self.total_input_tokens += response.input_tokens
+            self.total_output_tokens += response.output_tokens
+
+            cost = self.calculate_cost(
+                response.input_tokens, response.output_tokens, model
                 )
+            self.total_cost += cost
 
-                # Check if response was blocked or has no candidates
-                if not response.candidates:
-                    if response.prompt_feedback and hasattr(
-                        response.prompt_feedback, "block_reason"
-                    ):
-                        print(
-                            f"❌ Gemini API blocked content: {response.prompt_feedback.block_reason}"
-                        )
-                    else:
-                        print("❌ Gemini API returned no candidates.")
-                    return test_code  # Return original code if fix fails
-
-                # Track token usage
-                input_tokens = response.usage_metadata.prompt_token_count
-                output_tokens = response.usage_metadata.candidates_token_count
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                cost = self.calculate_cost(input_tokens, output_tokens, model)
-                self.total_cost += cost
-
-                if self.verbose_evaluation:
-                    print(
-                        f"💰 Fix attempt {attempt} cost: ${cost:.6f} (Input: {input_tokens}, Output: {output_tokens})"
+            if self.verbose_evaluation:
+                print(
+                f"💰 Fix attempt {attempt} cost: ${cost:.6f} "
+                f"(Input: {response.input_tokens}, Output: {response.output_tokens})"
                     )
 
-                raw_response = response.text
-                cleaned_response = self.clean_generated_code(raw_response)
-
-            elif provider == "openai":
-                # OpenAI API call using standard v1/chat/completions endpoint
-                response = client.chat.completions.create(
-                    model=self.model_mapping[model],
-                    max_tokens=DEFAULT_MAX_TOKENS,
-                    temperature=0.0,  # Set to 0 for deterministic responses
-                    top_p=1.0,  # Explicitly set to default for consistency
-                    frequency_penalty=0.0,  # No penalty for token frequency
-                    presence_penalty=0.0,  # No penalty for token presence
-                    seed=42,  # Fixed seed for reproducible outputs
-                    messages=[{"role": "user", "content": fix_prompt}],
-                )
-
-                # Track token usage
-                input_tokens = response.usage.prompt_tokens
-                output_tokens = response.usage.completion_tokens
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                cost = self.calculate_cost(input_tokens, output_tokens, model)
-                self.total_cost += cost
-
-                if self.verbose_evaluation:
-                    print(
-                        f"💰 Fix attempt {attempt} cost: ${cost:.6f} (Input: {input_tokens}, Output: {output_tokens})"
-                    )
-
-                raw_response = response.choices[0].message.content
-                cleaned_response = self.clean_generated_code(raw_response)
-
-            else:
-                # Anthropic API call
-                response = client.messages.create(
-                    model=self.model_mapping[model],
-                    max_tokens=DEFAULT_MAX_TOKENS,
-                    temperature=DEFAULT_TEMPERATURE,
-                    messages=[{"role": "user", "content": fix_prompt}],
-                )
-
-                # Track token usage
-                usage = response.usage
-                self.total_input_tokens += usage.input_tokens
-                self.total_output_tokens += usage.output_tokens
-
-                cost = self.calculate_cost(
-                    usage.input_tokens, usage.output_tokens, model
-                )
-                self.total_cost += cost
-
-                if self.verbose_evaluation:
-                    print(
-                        f"💰 Fix attempt {attempt} cost: ${cost:.6f} (Input: {usage.input_tokens}, Output: {usage.output_tokens})"
-                    )
-
-                raw_response = response.content[0].text
-                cleaned_response = self.clean_generated_code(raw_response)
+            cleaned_response = self.clean_generated_code(response.content)
 
             # Display the LLM's fix response
             self.display_fix_response(cleaned_response, attempt)
 
             return cleaned_response
 
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            return test_code  # Return original code if fix fails
         except Exception as e:
             print(f"❌ Error fixing test cases: {e}")
             return test_code  # Return original code if fixing fails
 
     def _analyze_failure_type(self, error_output: str) -> str:
         """Analyze pytest output to determine the type of failure.
+
+        Delegates to FailureAnalyzer for cleaner code.
         
         Args:
             error_output: The complete pytest output
@@ -1469,172 +1114,27 @@ Corrected code:"""
         Returns:
             str: Type of failure ('assertion', 'syntax', 'import', 'runtime', 'timeout', 'unknown')
         """
-        output_lower = error_output.lower()
-        
-        # Check for different error types
-        if "assertionerror" in output_lower or "assert " in output_lower:
-            return "assertion"
-        elif "syntaxerror" in output_lower:
-            return "syntax"
-        elif "importerror" in output_lower or "modulenotfounderror" in output_lower:
-            return "import"
-        elif "nameerror" in output_lower:
-            return "name"
-        elif "typeerror" in output_lower:
-            return "type"
-        elif "indexerror" in output_lower:
-            return "index"
-        elif "keyerror" in output_lower:
-            return "key"
-        elif "attributeerror" in output_lower:
-            return "attribute"
-        elif "valueerror" in output_lower:
-            return "value"
-        elif "zerodivisionerror" in output_lower:
-            return "zerodivision"
-        elif "recursionerror" in output_lower:
-            return "recursion"
-        elif "timeoutexpired" in output_lower or "timeout" in output_lower:
-            return "timeout"
-        else:
-            return "unknown"
+        return self.failure_analyzer.analyze(error_output).value
 
     def evaluate_bug_detection(
         self, test_file_path: str, problem: dict[str, Any]
     ) -> tuple[bool, bool, str, float, float]:
         """Evaluate if generated tests can detect bugs in HumanEvalPack.
+
+        Delegates to BugDetector for cleaner code.
         
         Returns:
             tuple[bool, bool, str, float, float]: (canonical_passed, buggy_failed_with_assertion, failure_type, final_c0_coverage, final_c1_coverage)
         """
-        print(f"\n{'='*80}")
-        print(f"🔍 BUG DETECTION EVALUATION")
-        print(f"{'='*80}")
-        print(f"Bug type: {problem.get('bug_type', 'unknown')}")
-        
-        # Phase 1: Test with canonical solution (should pass)
-        # This also captures the final coverage with canonical solution
-        print(f"\n📗 Phase 1: Testing with canonical solution...")
-        canonical_success, _, final_c0_coverage, final_c1_coverage = self.run_pytest(test_file_path)
-        
-        if canonical_success:
-            print(f"✅ Canonical solution: Tests PASSED (C0: {final_c0_coverage:.1f}%, C1: {final_c1_coverage:.1f}%)")
-        else:
-            print(f"❌ Canonical solution: Tests FAILED (unexpected)")
-        
-        # Phase 2: Replace with buggy solution and test (should fail)
-        print(f"\n📕 Phase 2: Testing with buggy solution...")
-        
-        # Read the test file
-        with open(test_file_path, "r", encoding="utf-8") as f:
-            original_content = f.read()
-        
-        # Replace canonical_solution with buggy_solution
-        canonical_solution = problem.get("canonical_solution", "")
-        buggy_solution = problem.get("buggy_solution", "")
-        
-        if not buggy_solution:
-            print(f"⚠️  No buggy solution available for this problem")
-            return canonical_success, False, "no_buggy_solution", final_c0_coverage, final_c1_coverage
-        
-        # Create modified content with buggy solution
-        modified_content = original_content.replace(canonical_solution, buggy_solution)
-        
-        # Write modified content to file
-        with open(test_file_path, "w", encoding="utf-8") as f:
-            f.write(modified_content)
-        
-        try:
-            # Run pytest with buggy solution
-            buggy_success, error_output, _, _ = self.run_pytest(test_file_path)
-            
-            failure_type = "none"
-            true_bug_detected = False
-            
-            if not buggy_success:
-                # Analyze the type of failure
-                failure_type = self._analyze_failure_type(error_output)
-                
-                if failure_type == "assertion":
-                    print(f"✅ Buggy solution: Tests FAILED with AssertionError")
-                    print(f"🎯 TRUE BUG DETECTED: Test cases correctly identified incorrect behavior!")
-                    true_bug_detected = True
-                else:
-                    print(f"⚠️  Buggy solution: Tests FAILED with {failure_type.upper()} error")
-                    print(f"⚠️  This is NOT a true bug detection (runtime error, not logic error)")
-                    true_bug_detected = False
-            else:
-                print(f"❌ Buggy solution: Tests PASSED (bug NOT detected)")
-                failure_type = "none"
-            
-            # Save buggy version to a separate file
-            buggy_file_path = self._save_buggy_version(test_file_path, modified_content)
-            if buggy_file_path:
-                print(f"💾 Buggy version saved to: {Path(buggy_file_path).name}")
-            
-            # Restore original content
-            with open(test_file_path, "w", encoding="utf-8") as f:
-                f.write(original_content)
-            
-            print(f"\n{'='*80}")
-            if canonical_success and true_bug_detected:
-                print(f"🎉 BUG DETECTION: SUCCESS (True Positive)")
-                print(f"   ✓ Canonical solution passed")
-                print(f"   ✓ Buggy solution failed with AssertionError")
-                print(f"   ✓ Test cases detected incorrect logic!")
-            elif canonical_success and not buggy_success:
-                print(f"⚠️  BUG DETECTION: FALSE POSITIVE")
-                print(f"   ✓ Canonical solution passed")
-                print(f"   ✗ Buggy solution failed with {failure_type.upper()} error (not assertion)")
-                print(f"   ✗ This is a runtime error, not a logic error detection")
-            elif not canonical_success:
-                print(f"⚠️  BUG DETECTION: INCONCLUSIVE")
-                print(f"   ✗ Canonical solution failed")
-                print(f"   → Cannot evaluate bug detection capability")
-            else:
-                print(f"❌ BUG DETECTION: FAILED (False Negative)")
-                print(f"   ✓ Canonical solution passed")
-                print(f"   ✗ Buggy solution passed (bug NOT detected)")
-                print(f"   ✗ Test cases missed the bug")
-            print(f"{'='*80}\n")
-            
-            return canonical_success, true_bug_detected, failure_type, final_c0_coverage, final_c1_coverage
-            
-        except Exception as e:
-            print(f"❌ Error during bug detection evaluation: {e}")
-            # Restore original content on error
-            with open(test_file_path, "w", encoding="utf-8") as f:
-                f.write(original_content)
-            return canonical_success, False, "exception", final_c0_coverage, final_c1_coverage
+        result = self.bug_detector.evaluate(test_file_path, problem)
 
-    def _save_buggy_version(self, original_file_path: str, buggy_content: str) -> str:
-        """Save a separate file containing the buggy solution version.
-        
-        Args:
-            original_file_path: Path to the original test file
-            buggy_content: Content with buggy solution
-        
-        Returns:
-            str: Path to the saved buggy version file
-        """
-        try:
-            original_path = Path(original_file_path)
-            
-            # Create buggy version filename
-            # e.g., test_python_0_missing_logic_success.py -> test_python_0_missing_logic_success_buggy.py
-            stem = original_path.stem
-            buggy_filename = f"{stem}_buggy{original_path.suffix}"
-            buggy_file_path = original_path.parent / buggy_filename
-            
-            # Write buggy version to file
-            with open(buggy_file_path, "w", encoding="utf-8") as f:
-                f.write(buggy_content)
-            
-            return str(buggy_file_path)
-            
-        except Exception as e:
-            print(f"⚠️  Warning: Could not save buggy version: {e}")
-            return None
+        return (
+            result.canonical_passed,
+            result.true_bug_detected,
+            result.failure_type.value,
+            result.c0_coverage,
+            result.c1_coverage,
+        )
 
     def evaluate_and_fix_tests(
         self, test_file_path: str, problem: dict[str, Any], model: str
@@ -1779,18 +1279,28 @@ Corrected code:"""
                 
                 # For HumanEvalPack, run additional bug detection evaluation
                 if self.dataset_type == "humanevalpack" and evaluation_success:
-                    print(f"\n📊 Coverage before bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
-                    
-                    canonical_passed, buggy_failed, failure_type, bug_c0_cov, bug_c1_cov = self.evaluate_bug_detection(
-                        filepath, problem
+                    print(
+                        f"\n📊 Coverage before bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
                     )
+
+                    (
+                        canonical_passed,
+                        buggy_failed,
+                        failure_type,
+                        bug_c0_cov,
+                        bug_c1_cov,
+                    ) = self.evaluate_bug_detection(filepath, problem)
                     # Update coverage with the final values from bug detection evaluation
                     # (which re-runs tests with canonical solution to get accurate coverage)
                     c0_coverage = bug_c0_cov
                     c1_coverage = bug_c1_cov
                     
-                    print(f"📊 Coverage after bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
-                    print(f"📊 Final coverage to be saved: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%")
+                    print(
+                        f"📊 Coverage after bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
+                    )
+                    print(
+                        f"📊 Final coverage to be saved: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
+                    )
                     
                     bug_detection_success = canonical_passed and buggy_failed
                     
