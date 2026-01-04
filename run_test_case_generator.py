@@ -746,7 +746,6 @@ class TestCaseGenerator:
                 "evaluation_success": evaluation_success,
                 "fix_attempts_used": fix_attempts_used,
                 "max_fix_attempts": self.max_fix_attempts,
-                "code_coverage_percent": c0_coverage,
                 "code_coverage_c0_percent": c0_coverage,
                 "code_coverage_c1_percent": c1_coverage,
                 "dataset_type": self.dataset_type,
