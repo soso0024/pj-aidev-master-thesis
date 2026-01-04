@@ -1,0 +1,29 @@
+{
+  "total_input_tokens": 199,
+  "total_output_tokens": 613,
+  "total_tokens": 812,
+  "total_cost_usd": 0.0,
+  "task_id": "Python/38",
+  "generated_file": "data/generated_tests_humanevalpack_gemini-2-5-flash-lite/test_python_38_missing_logic_success.py",
+  "evaluation_enabled": true,
+  "evaluation_success": true,
+  "fix_attempts_used": 0,
+  "max_fix_attempts": 3,
+  "code_coverage_percent": 81.81818181818183,
+  "code_coverage_c0_percent": 81.81818181818183,
+  "code_coverage_c1_percent": 100.0,
+  "dataset_type": "humanevalpack",
+  "prompt_config": {
+    "include_docstring": false,
+    "include_ast": false,
+    "ast_fix": false,
+    "template_hash": "b9d53bc94d98d203"
+  },
+  "bug_type": "missing logic",
+  "bug_detection_success": true,
+  "canonical_solution_passed": true,
+  "buggy_solution_failed": true,
+  "buggy_failure_type": "assertion",
+  "is_true_positive": true,
+  "is_false_positive": false
+}

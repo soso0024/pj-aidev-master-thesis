@@ -5,6 +5,7 @@ Automatically generates comprehensive pytest test cases for HumanEval problems u
 ## Features
 
 - **Multi-model support**: Claude (Opus, Sonnet, Haiku), Gemini, OpenAI models
+- **Multiple datasets**: HumanEval and HumanEvalPack support (loaded from HuggingFace 🤗)
 - **Automatic evaluation**: Pytest execution with LLM-powered error fixing
 - **Batch processing**: Generate tests for multiple problems simultaneously
 - **Prompt engineering**: 4 different prompt strategies for comparison
@@ -17,6 +18,8 @@ Automatically generates comprehensive pytest test cases for HumanEval problems u
 1. Install dependencies: `uv sync` or `pip install -r requirements.txt`
 2. Set API key: `export ANTHROPIC_API_KEY="your-key"` (or `GOOGLE_API_KEY` for Gemini)
 3. Generate test: `python run_test_case_generator.py` (**requires Python 3.10+**)
+
+**Note**: Datasets (HumanEval and HumanEvalPack) are automatically downloaded from HuggingFace 🤗 on first run. No manual dataset setup required!
 
 ## Supported Models
 
@@ -52,28 +55,41 @@ Models configured in `models_config.json`:
 ### Single Test Generation
 
 ```bash
-# Random problem with default model
+# Random problem with default model (HumanEval)
 python run_test_case_generator.py
 
-# Specific problem with specific model
-python run_test_case_generator.py --task-id "HumanEval/0" --models claude-sonnet-4-5
+# Specific problem with specific model (unified ID format - recommended)
+python run_test_case_generator.py --task-id 0 --models claude-sonnet-4-5
 
 # With Gemini model
-python run_test_case_generator.py --task-id "HumanEval/0" --models gemini-2.5-flash
+python run_test_case_generator.py --task-id 5 --models gemini-2.5-flash
 
 # Full context generation
-python run_test_case_generator.py --include-docstring --include-ast
+python run_test_case_generator.py --task-id 10 --include-docstring --include-ast
+
+# Use HumanEvalPack dataset (same unified ID format!)
+python run_test_case_generator.py --dataset-type humanevalpack --task-id 0
+
+# Legacy format also supported
+python run_test_case_generator.py --task-id "HumanEval/0"
+python run_test_case_generator.py --dataset-type humanevalpack --task-id "Python/0"
 ```
 
 ### Batch Processing
 
 ```bash
-# Generate tests for problems 0-10
+# Generate tests for problems 0-10 (works for both HumanEval and HumanEvalPack!)
 cd batch
 python run_batch_test_case_generator.py --start 0 --end 10
 
 # With specific model
 python run_batch_test_case_generator.py --start 0 --end 10 --models claude-haiku-4-5
+
+# HumanEvalPack dataset (same command format!)
+python run_batch_test_case_generator.py --start 0 --end 10 --dataset-type humanevalpack
+
+# Specific task IDs (unified format)
+python run_batch_test_case_generator.py --task-ids "0,5,10,15"
 
 # Multiple models for comparison
 python run_batch_test_case_generator.py --start 0 --end 5 --models claude-sonnet-4-5 gemini-2.5-flash
@@ -230,8 +246,8 @@ docstring: 82.3% (95% CI: [77.1%, 87.5%])
 │   └── run_batch_test_case_generator.py
 ├── data/                              # Generated test outputs
 │   └── generated_tests_[dataset]_[model]/
-├── dataset/                           # HumanEval dataset files
-│   ├── HumanEval.jsonl               # Original format
+├── dataset/                           # Legacy dataset files (optional)
+│   ├── HumanEval.jsonl               # Legacy format (loaded from HuggingFace by default)
 │   ├── HumanEval_formatted.json      # Formatted version
 │   └── HumanEval_formatted.yaml      # YAML version
 ├── prompts/                           # Prompt templates
@@ -291,12 +307,16 @@ pytest test_python_0_missing_logic_success.py -v
 - **Python 3.10+** required for test generation (`run_test_case_generator.py`)
 - **Python 3.8.20+** required for analysis scripts (`run_analysis.py`)
 - `uv sync` or `pip install -r requirements.txt`
+- **Internet connection** for first run (to download datasets from HuggingFace 🤗)
 - API keys:
   - `ANTHROPIC_API_KEY` for Claude models
   - `GOOGLE_API_KEY` for Gemini models
   - `OPENAI_API_KEY` for GPT models
 
-> **Note**: Due to different Python version requirements, you may need separate virtual environments for test generation (3.10+) and analysis (3.8.20+).
+> **Note**:
+>
+> - Datasets are automatically cached after first download
+> - Due to different Python version requirements, you may need separate virtual environments for test generation (3.10+) and analysis (3.8.20+)
 
 ## Environment Variables
 

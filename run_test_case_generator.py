@@ -148,17 +148,40 @@ class TestCaseGenerator:
         else:
             self.load_humaneval_dataset(file_path)
 
-    def load_humaneval_dataset(self, file_path: str) -> None:
-        """Load the HumanEval dataset from JSONL file."""
-        print(f"Loading HumanEval dataset from {file_path}...")
+    def load_humaneval_dataset(self, file_path: str = None) -> None:
+        """Load the HumanEval dataset from Hugging Face.
+        
+        Args:
+            file_path: Legacy parameter, kept for backward compatibility but not used.
+                      Dataset is now loaded from Hugging Face instead.
+        """
+        if not DATASETS_AVAILABLE:
+            raise ImportError(
+                "datasets library is required for HumanEval. "
+                "Install it with: pip install datasets"
+            )
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    problem = json.loads(line.strip())
-                    self.problems.append(problem)
-
-        print(f"Loaded {len(self.problems)} problems from HumanEval dataset")
+        print("Loading HumanEval dataset from Hugging Face...")
+        
+        try:
+            # Load the HumanEval dataset from Hugging Face
+            dataset = load_dataset("openai/openai_humaneval", split="test")
+            
+            # Convert dataset to problem format compatible with existing code
+            for item in dataset:
+                problem = {
+                    "task_id": item["task_id"],
+                    "prompt": item["prompt"],
+                    "entry_point": item["entry_point"],
+                    "canonical_solution": item["canonical_solution"],
+                    "test": item["test"],
+                }
+                self.problems.append(problem)
+            
+            print(f"Loaded {len(self.problems)} problems from HumanEval dataset")
+                
+        except Exception as e:
+            raise RuntimeError(f"Failed to load HumanEval dataset: {e}")
 
     def load_humanevalpack_dataset(self) -> None:
         """Load the HumanEvalPack dataset from Hugging Face."""
@@ -1428,12 +1451,47 @@ class TestCaseGenerator:
     def generate_for_specific_problem(
         self, task_id: str, output_dir: str = "generated_tests"
     ) -> list[str]:
-        """Generate test cases for a specific problem by task_id."""
-        problem = next((p for p in self.problems if p["task_id"] == task_id), None)
+        """Generate test cases for a specific problem by task_id.
+        
+        Args:
+            task_id: Problem identifier. Can be:
+                     - Number only: "0", "5", "10" (automatically adds prefix)
+                     - Full ID: "HumanEval/0", "Python/0" (used as-is)
+            output_dir: Output directory for generated tests
+            
+        Returns:
+            List of generated test file paths
+        """
+        # Normalize task_id based on dataset type
+        normalized_task_id = self._normalize_task_id(task_id)
+        
+        problem = next((p for p in self.problems if p["task_id"] == normalized_task_id), None)
         if not problem:
-            raise ValueError(f"Problem {task_id} not found in dataset")
+            raise ValueError(
+                f"Problem {normalized_task_id} not found in {self.dataset_type} dataset. "
+                f"Available range: 0-{len(self.problems)-1}"
+            )
 
         return self._generate_and_evaluate_test_cases(problem, output_dir)
+    
+    def _normalize_task_id(self, task_id: str) -> str:
+        """Normalize task_id based on dataset type.
+        
+        Args:
+            task_id: Raw task ID (e.g., "0", "HumanEval/0", "Python/0")
+            
+        Returns:
+            Normalized task ID with proper prefix
+        """
+        # If task_id is just a number, add appropriate prefix
+        if task_id.isdigit():
+            if self.dataset_type == "humanevalpack":
+                return f"Python/{task_id}"
+            else:
+                return f"HumanEval/{task_id}"
+        
+        # If task_id already has a prefix, use it as-is
+        return task_id
 
 
 def main():
@@ -1454,7 +1512,8 @@ def main():
         help="Output directory for test files",
     )
     parser.add_argument(
-        "--task-id", help="Specific task ID to generate tests for (optional)"
+        "--task-id", 
+        help="Specific task ID to generate tests for (e.g., '0', '5' or 'HumanEval/0')"
     )
     parser.add_argument("--api-key", help="Claude API key (or set in .env file)")
     parser.add_argument(
@@ -1507,8 +1566,8 @@ def main():
     parser.add_argument(
         "--dataset-type",
         choices=["humaneval", "humanevalpack"],
-        default="humaneval",
-        help="Dataset to use for test generation (default: humaneval)",
+        default="humanevalpack",
+        help="Dataset to use for test generation (default: humanevalpack)",
     )
 
     args = parser.parse_args()

@@ -139,8 +139,8 @@ class BatchTestGenerator:
     def run_batch(self, task_ids: Optional[List[str]] = None) -> None:
         """Run test generation for a batch of task IDs."""
         if task_ids is None:
-            # Generate task IDs from range
-            task_ids = [f"HumanEval/{i}" for i in range(self.start_id, self.end_id + 1)]
+            # Generate task IDs from range (just numbers, will be normalized by generator)
+            task_ids = [str(i) for i in range(self.start_id, self.end_id + 1)]
 
         self.total_tasks = len(task_ids)
 
@@ -229,14 +229,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate tests for HumanEval/0 through HumanEval/10
+  # Generate tests for problems 0 through 10 (HumanEval)
   python run_batch_test_case_generator.py --start 0 --end 10
 
   # Generate with docstrings and AST info
   python run_batch_test_case_generator.py --start 0 --end 5 --include-docstring --include-ast
 
-  # Generate specific task IDs
-  python run_batch_test_case_generator.py --task-ids "HumanEval/0,HumanEval/5,HumanEval/10"
+  # Generate specific task IDs (number format - recommended)
+  python run_batch_test_case_generator.py --task-ids "0,5,10"
+
+  # Generate for HumanEvalPack dataset
+  python run_batch_test_case_generator.py --start 0 --end 10 --dataset-type humanevalpack
 
   # Disable evaluation for faster generation
   python run_batch_test_case_generator.py --start 0 --end 20 --disable-evaluation
@@ -254,7 +257,7 @@ Examples:
     # Specific task IDs
     parser.add_argument(
         "--task-ids",
-        help="Comma-separated list of specific task IDs (e.g., 'HumanEval/0,HumanEval/5')",
+        help="Comma-separated list of task IDs (e.g., '0,5,10' or 'HumanEval/0,HumanEval/5')",
     )
 
     # Generator options (passed through to run_test_case_generator.py)
@@ -315,8 +318,8 @@ Examples:
     parser.add_argument(
         "--dataset-type",
         choices=["humaneval", "humanevalpack"],
-        default="humaneval",
-        help="Dataset to use for test generation (default: humaneval)",
+        default="humanevalpack",
+        help="Dataset to use for test generation (default: humanevalpack)",
     )
 
     args = parser.parse_args()
@@ -328,9 +331,16 @@ Examples:
         )
         return 1
 
-    if not Path(args.dataset).exists():
-        print(f"❌ Error: Dataset file {args.dataset} not found")
-        return 1
+    # Only check for local dataset file if not using Hugging Face datasets
+    if args.dataset_type in ["humaneval", "humanevalpack"]:
+        # For these dataset types, we load from Hugging Face, so local file is optional
+        if not Path(args.dataset).exists():
+            print(f"ℹ️  Local dataset file {args.dataset} not found, will load from Hugging Face")
+    else:
+        # For other dataset types, require local file
+        if not Path(args.dataset).exists():
+            print(f"❌ Error: Dataset file {args.dataset} not found")
+            return 1
 
     # Parse task IDs
     task_ids = None
@@ -341,7 +351,12 @@ Examples:
         if args.start > args.end:
             print("❌ Error: Start ID must be less than or equal to end ID")
             return 1
-        print(f"🎯 Using range: HumanEval/{args.start} to HumanEval/{args.end}")
+        
+        # Display appropriate range message based on dataset type
+        if args.dataset_type == "humanevalpack":
+            print(f"🎯 Using range: Python/{args.start} to Python/{args.end}")
+        else:
+            print(f"🎯 Using range: HumanEval/{args.start} to HumanEval/{args.end}")
 
     # Create and run batch generator
     try:

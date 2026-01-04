@@ -21,6 +21,14 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
+# Import datasets library for HuggingFace integration
+try:
+    from datasets import load_dataset
+
+    DATASETS_AVAILABLE = True
+except ImportError:
+    DATASETS_AVAILABLE = False
+
 
 class ProblemClassifier:
     """Handles classification of HumanEval problems by cognitive complexity.
@@ -248,11 +256,46 @@ class ProblemClassifier:
         """
         Load and classify all problems from the HumanEval dataset.
 
+        Loads from HuggingFace by default. Falls back to local JSONL file if specified.
+
         IMPROVEMENT: If use_adaptive_thresholds=True, calculates standard deviation-based
         thresholds after classifying all problems. Uses mean ± STD_DEV_FACTOR*std to define
         boundaries, which classifies problems based on their deviation from average complexity
         rather than arbitrary fixed values or equal problem count distribution.
         """
+        # Try loading from HuggingFace first
+        if DATASETS_AVAILABLE:
+            try:
+                print("Loading HumanEval dataset from Hugging Face for classification...")
+                dataset = load_dataset("openai/openai_humaneval", split="test")
+                
+                # First pass: classify all problems with default thresholds
+                temp_scores = []
+                
+                for item in dataset:
+                    problem_data = {
+                        "task_id": item["task_id"],
+                        "prompt": item["prompt"],
+                        "entry_point": item["entry_point"],
+                        "canonical_solution": item["canonical_solution"],
+                        "test": item["test"],
+                    }
+                    task_id = problem_data.get("task_id", "")
+                    if "/" in task_id:
+                        problem_id = int(task_id.split("/")[1])
+                        classification = self.classify_problem_complexity(problem_data)
+                        self.problem_classifications[problem_id] = classification
+                        temp_scores.append(classification["complexity_score"])
+                
+                self._apply_adaptive_thresholds(temp_scores)
+                print(f"Successfully classified {len(self.problem_classifications)} problems from HuggingFace")
+                return
+                
+            except Exception as e:
+                print(f"Warning: Failed to load from HuggingFace: {e}")
+                print("Falling back to local dataset file...")
+        
+        # Fallback to local file if HuggingFace is not available or failed
         print(f"Loading problem classifications from {self.dataset_path}...")
 
         if not self.dataset_path.exists():
@@ -278,42 +321,49 @@ class ProblemClassifier:
                             self.problem_classifications[problem_id] = classification
                             temp_scores.append(classification["complexity_score"])
 
-            # IMPROVEMENT: Calculate adaptive thresholds based on standard deviation
-            if self.use_adaptive_thresholds and temp_scores:
-                mean = np.mean(temp_scores)
-                std = np.std(temp_scores)
-                min_score = np.min(temp_scores)
-                max_score = np.max(temp_scores)
-
-                # Use standard deviation to define thresholds
-                # threshold1: mean - STD_DEV_FACTOR * std (boundary between simple and medium)
-                # threshold2: mean + STD_DEV_FACTOR * std (boundary between medium and complex)
-                threshold1 = max(mean - self.STD_DEV_FACTOR * std, min_score)  # Don't go below minimum
-                threshold2 = min(mean + self.STD_DEV_FACTOR * std, max_score)  # Don't go above maximum
-
-                self.complexity_thresholds = (threshold1, threshold2)
-                print(
-                    f"Using standard deviation-based thresholds: {threshold1:.2f} and {threshold2:.2f}"
-                )
-                print(
-                    f"  Mean: {mean:.2f}, Std Dev: {std:.2f}, Range: {min_score:.2f} - {max_score:.2f}"
-                )
-
-                # Second pass: reclassify with adaptive thresholds
-                for problem_id, classification in self.problem_classifications.items():
-                    score = classification["complexity_score"]
-                    classification["complexity_level"] = (
-                        self._determine_complexity_level(
-                            score, self.complexity_thresholds
-                        )
-                    )
-
+            self._apply_adaptive_thresholds(temp_scores)
             print(
-                f"Successfully classified {len(self.problem_classifications)} problems"
+                f"Successfully classified {len(self.problem_classifications)} problems from local file"
             )
 
         except Exception as e:
             print(f"Error loading problem classifications: {e}")
+    
+    def _apply_adaptive_thresholds(self, temp_scores: List[float]) -> None:
+        """Apply adaptive thresholds based on complexity scores.
+        
+        Args:
+            temp_scores: List of complexity scores from all problems
+        """
+        # IMPROVEMENT: Calculate adaptive thresholds based on standard deviation
+        if self.use_adaptive_thresholds and temp_scores:
+            mean = np.mean(temp_scores)
+            std = np.std(temp_scores)
+            min_score = np.min(temp_scores)
+            max_score = np.max(temp_scores)
+
+            # Use standard deviation to define thresholds
+            # threshold1: mean - STD_DEV_FACTOR * std (boundary between simple and medium)
+            # threshold2: mean + STD_DEV_FACTOR * std (boundary between medium and complex)
+            threshold1 = max(mean - self.STD_DEV_FACTOR * std, min_score)  # Don't go below minimum
+            threshold2 = min(mean + self.STD_DEV_FACTOR * std, max_score)  # Don't go above maximum
+
+            self.complexity_thresholds = (threshold1, threshold2)
+            print(
+                f"Using standard deviation-based thresholds: {threshold1:.2f} and {threshold2:.2f}"
+            )
+            print(
+                f"  Mean: {mean:.2f}, Std Dev: {std:.2f}, Range: {min_score:.2f} - {max_score:.2f}"
+            )
+
+            # Second pass: reclassify with adaptive thresholds
+            for problem_id, classification in self.problem_classifications.items():
+                score = classification["complexity_score"]
+                classification["complexity_level"] = (
+                    self._determine_complexity_level(
+                        score, self.complexity_thresholds
+                    )
+                )
 
     def get_classification(self, problem_id: int) -> Dict[str, Any]:
         """Get classification data for a specific problem ID."""
