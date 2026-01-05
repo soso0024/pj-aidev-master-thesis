@@ -22,6 +22,7 @@ from typing import Dict, List, Any
 from analysis.data_loader import DataLoader
 from analysis.traditional_plots import TraditionalPlots
 from analysis.dataset_aware_plots import DatasetAwarePlots
+from analysis.humanevalpack_plots import HumanEvalPackPlots
 from analysis.analysis_reporter import AnalysisReporter
 
 
@@ -47,6 +48,7 @@ class TestResultsAnalyzer:
         # Plotting and reporting components (initialized after data loading)
         self.traditional_plots = None
         self.dataset_aware_plots = None
+        self.humanevalpack_plots = None
         self.reporter = None
 
     def load_data(self) -> None:
@@ -61,6 +63,7 @@ class TestResultsAnalyzer:
         if self.data:
             self.traditional_plots = TraditionalPlots(self.data, self.config_order)
             self.dataset_aware_plots = DatasetAwarePlots(self.data, self.config_order)
+            self.humanevalpack_plots = HumanEvalPackPlots(self.data, self.config_order)
             self.reporter = AnalysisReporter(self.data, self.config_order)
         else:
             print(
@@ -85,9 +88,13 @@ class TestResultsAnalyzer:
         if self.traditional_plots:
             self.traditional_plots.create_all_plots(output_path)
 
-        # Create dataset-aware plots
+        # Create dataset-aware plots (charts 6-8)
         if self.dataset_aware_plots:
             self.dataset_aware_plots.create_all_plots(output_path)
+
+        # Create HumanEvalPack-specific plots (charts 9-13)
+        if self.humanevalpack_plots:
+            self.humanevalpack_plots.create_all_plots(output_path)
 
         print(f"\n✅ All visualizations saved to '{output_path}/' directory")
 
@@ -115,6 +122,7 @@ class TestResultsAnalyzer:
             return {
                 "total_records": 0,
                 "configurations": [],
+                "has_dataset_classification": False,
                 "message": "No data loaded",
             }
 

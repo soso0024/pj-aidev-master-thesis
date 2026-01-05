@@ -54,16 +54,6 @@
         "output_per_1k": 0.00125
       }
     },
-    "ollama-gpt-oss": {
-      "api_name": "gpt-oss:20b",
-      "folder_name": "ollama-gpt-oss",
-      "provider": "ollama",
-      "base_url": "http://localhost:11434",
-      "pricing": {
-        "input_per_1k": 0.0,
-        "output_per_1k": 0.0
-      }
-    },
     "gemini-1.5-pro": {
       "api_name": "gemini-1.5-pro",
       "folder_name": "gemini-1-5-pro",

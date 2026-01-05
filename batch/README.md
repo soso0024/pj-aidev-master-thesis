@@ -1,12 +1,13 @@
 # Batch Test Case Generator
 
-A batch processing tool that automates running the test case generator for multiple HumanEval problems, making it easy to generate test cases for many problems at once.
+A batch processing tool that automates running the test case generator for multiple HumanEval/HumanEvalPack problems, making it easy to generate test cases for many problems at once.
 
 ## Features
 
+- **Multiple datasets**: Supports both HumanEval and HumanEvalPack (loaded from HuggingFace 🤗)
 - **Range-based generation**: Generate tests for HumanEval/0 through HumanEval/N
 - **Specific task selection**: Generate tests for comma-separated specific task IDs
-- **Multi-model support**: Generate tests using multiple Claude models simultaneously
+- **Multi-model support**: Generate tests using multiple LLM models simultaneously
 - **Progress tracking**: Real-time progress updates and statistics
 - **Error handling**: Robust error handling with user-controlled continuation
 - **Timeout protection**: 5-minute timeout per task to prevent hanging
@@ -19,14 +20,17 @@ A batch processing tool that automates running the test case generator for multi
 Generate test cases for a range of problems:
 
 ```bash
-# Generate tests for HumanEval/0 through HumanEval/10
+# Generate tests for problems 0-10 (unified format for both datasets!)
 python run_batch_test_case_generator.py --start 0 --end 10
 
 # Generate with docstrings and AST for range 0-5
 python run_batch_test_case_generator.py --start 0 --end 5 --include-docstring --include-ast
 
-# Generate specific task IDs
-python run_batch_test_case_generator.py --task-ids "HumanEval/0,HumanEval/5,HumanEval/10"
+# Generate specific task IDs (unified number format - recommended)
+python run_batch_test_case_generator.py --task-ids "0,5,10"
+
+# HumanEvalPack dataset (same format!)
+python run_batch_test_case_generator.py --start 0 --end 10 --dataset-type humanevalpack
 
 # Fast generation without evaluation for range 0-20
 python run_batch_test_case_generator.py --start 0 --end 20 --disable-evaluation
@@ -39,8 +43,9 @@ python run_batch_test_case_generator.py --start 0 --end 20 --disable-evaluation
 | `--start N`              | Start task ID number                          | 0                       |
 | `--end N`                | End task ID number                            | 50                      |
 | `--task-ids "X,Y,Z"`     | Comma-separated specific task IDs             | None (use range)        |
-| `--models MODEL1 MODEL2` | Claude model(s) to use (can specify multiple) | claude-3-5-sonnet       |
-| `--dataset PATH`         | Path to HumanEval dataset file                | dataset/HumanEval.jsonl |
+| `--models MODEL1 MODEL2` | LLM model(s) to use (can specify multiple)    | gemini-2.5-flash-lite   |
+| `--dataset PATH`         | Legacy parameter (datasets loaded from HuggingFace 🤗) | N/A |
+| `--dataset-type TYPE`    | Dataset to use (humaneval or humanevalpack)   | humaneval               |
 | `--output-dir DIR`       | Output directory for test files               | generated_tests         |
 | `--include-docstring`    | Include function docstring in prompt          | False                   |
 | `--include-ast`          | Include AST of canonical solution in prompt   | False                   |
@@ -51,14 +56,14 @@ python run_batch_test_case_generator.py --start 0 --end 20 --disable-evaluation
 
 ### Multi-Model Generation
 
-Generate tests using multiple Claude models simultaneously:
+Generate tests using multiple LLM models simultaneously:
 
 ```bash
 # Use multiple models for comprehensive testing
-python run_batch_test_case_generator.py --start 0 --end 5 --models claude-3-5-sonnet claude-3-5-haiku
+python run_batch_test_case_generator.py --start 0 --end 5 --models claude-sonnet-4-5 gemini-2.5-flash
 
 # Compare model performance across a range
-python run_batch_test_case_generator.py --start 0 --end 10 --models claude-3-5-sonnet claude-3-opus-4-1
+python run_batch_test_case_generator.py --start 0 --end 10 --models claude-sonnet-4-5 gpt-4.1
 ```
 
 ## Examples
@@ -72,7 +77,11 @@ python run_batch_test_case_generator.py --start 0 --end 10 --include-docstring -
 ### Generate specific problems with evaluation disabled:
 
 ```bash
-python run_batch_test_case_generator.py --task-ids "HumanEval/0,HumanEval/15,HumanEval/30" --disable-evaluation
+# Unified number format (works for both datasets!)
+python run_batch_test_case_generator.py --task-ids "0,15,30" --disable-evaluation
+
+# HumanEvalPack
+python run_batch_test_case_generator.py --task-ids "0,15,30" --dataset-type humanevalpack --disable-evaluation
 ```
 
 ### Quiet batch processing for automation:
@@ -172,10 +181,11 @@ The batch generator wraps the main `run_test_case_generator.py` tool. It always 
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - All dependencies from main test generator
 - `run_test_case_generator.py` in the same directory
-- Valid HumanEval dataset file
+- **Internet connection** for first run (to download datasets from HuggingFace 🤗)
+- Datasets are automatically cached after first download
 
 ## Tips for Effective Batch Processing
 

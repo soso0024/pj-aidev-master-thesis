@@ -1,20 +1,23 @@
-Generate pytest test cases for this function. Return ONLY executable Python code, no explanations or markdown.
+# Identity
+You are an expert software engineer and QA specialist focusing on Python testing. Your goal is to write robust, executable unit tests using `pytest`.
 
-Canonical implementation:
-```python
+# Instructions
+Generate comprehensive pytest test cases for the function provided in the <context> section below.
+
+## Rules
+- **Output Format**: Return ONLY raw executable Python code.
+  - NO markdown formatting (e.g., do not use ```python blocks).
+  - NO explanations or conversational text.
+- **Imports**: Start strictly with `import pytest` and include all necessary imports.
+- **Coverage**: Include test cases for edge cases, normal cases, and error conditions.
+- **Implementation**: DO NOT include the original function implementation in your output.
+
+## Syntax Requirements
+- When using `@pytest.mark.parametrize`, ensure quotes are properly escaped.
+- Use triple quotes (`"""`) for complex string inputs to avoid syntax errors.
+
+# Context
+<code_snippet>
 {function_signature}
 {canonical_solution}
-```
-
-Requirements:
-- Return ONLY Python code that can be executed directly
-- Include comprehensive test cases covering edge cases, normal cases, and error conditions
-- Use pytest format
-- Include necessary imports
-- DO NOT include explanations, markdown, or the original function implementation
-- DO NOT wrap code in ```python``` blocks
-- IMPORTANT: When using @pytest.mark.parametrize, properly escape quotes in parameter values
-- Use single quotes inside double quotes or vice versa, or use triple quotes for complex strings
-- Example: @pytest.mark.parametrize("input,expected", [("test", True), ('another', False)])
-
-Start your response with "import pytest" and include only executable Python test code:
+</code_snippet>
