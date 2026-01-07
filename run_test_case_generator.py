@@ -31,11 +31,6 @@ except ImportError:
 
 
 # Constants for maintainability
-MAX_AST_NODES = 20  # Maximum number of AST nodes to include in snippet
-MAX_AST_OUTPUT_NODES = 15  # Maximum nodes to output in final result
-AST_SCORE_ERROR_MATCH = 10  # Score for nodes matching error patterns
-AST_SCORE_LINE_OVERLAP = 5  # Score for nodes overlapping with error lines
-AST_SCORE_COMMON_ERROR = 2  # Score for common error-prone operations
 PYTEST_TIMEOUT_SECONDS = 60  # Timeout for pytest execution
 DEFAULT_MAX_TOKENS = (
     8000  # Max tokens for LLM response (high limit for research evaluation)
@@ -61,7 +56,6 @@ class TestCaseGenerator:
         max_fix_attempts: int = 3,
         verbose_evaluation: bool = True,
         config_path: str = "models_config.json",
-        ast_fix: bool = False,
         dataset_type: str = "humaneval",
     ):
         """Initialize the test case generator with LLM clients."""
@@ -101,8 +95,6 @@ class TestCaseGenerator:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost = 0.0
-        # Whether to include a focused AST snippet in error-fix prompts
-        self.ast_fix = ast_fix
 
         # Initialize prompt builder for dynamic template loading
         self.prompt_builder = PromptBuilder()
@@ -150,7 +142,7 @@ class TestCaseGenerator:
 
     def load_humaneval_dataset(self, file_path: str = None) -> None:
         """Load the HumanEval dataset from Hugging Face.
-        
+
         Args:
             file_path: Legacy parameter, kept for backward compatibility but not used.
                       Dataset is now loaded from Hugging Face instead.
@@ -162,11 +154,11 @@ class TestCaseGenerator:
             )
 
         print("Loading HumanEval dataset from Hugging Face...")
-        
+
         try:
             # Load the HumanEval dataset from Hugging Face
             dataset = load_dataset("openai/openai_humaneval", split="test")
-            
+
             # Convert dataset to problem format compatible with existing code
             for item in dataset:
                 problem = {
@@ -177,9 +169,9 @@ class TestCaseGenerator:
                     "test": item["test"],
                 }
                 self.problems.append(problem)
-            
+
             print(f"Loaded {len(self.problems)} problems from HumanEval dataset")
-                
+
         except Exception as e:
             raise RuntimeError(f"Failed to load HumanEval dataset: {e}")
 
@@ -192,11 +184,11 @@ class TestCaseGenerator:
             )
 
         print("Loading HumanEvalPack dataset from Hugging Face...")
-        
+
         try:
             # Load the Python subset of HumanEvalPack
             dataset = load_dataset("bigcode/humanevalpack", "python", split="test")
-            
+
             # Convert dataset to problem format compatible with existing code
             for item in dataset:
                 problem = {
@@ -209,19 +201,19 @@ class TestCaseGenerator:
                     "test": item["test"],
                 }
                 self.problems.append(problem)
-            
+
             print(f"Loaded {len(self.problems)} problems from HumanEvalPack dataset")
-            
+
             # Print bug type distribution
             bug_types = {}
             for problem in self.problems:
                 bug_type = problem.get("bug_type", "unknown")
                 bug_types[bug_type] = bug_types.get(bug_type, 0) + 1
-            
+
             print(f"Bug type distribution:")
             for bug_type, count in sorted(bug_types.items()):
                 print(f"  - {bug_type}: {count}")
-                
+
         except Exception as e:
             raise RuntimeError(f"Failed to load HumanEvalPack dataset: {e}")
 
@@ -246,328 +238,6 @@ class TestCaseGenerator:
         return self.prompt_builder.generate_ast_string(
             canonical_solution, prompt, entry_point
         )
-
-    # --- Helper methods to keep generate_relevant_ast_snippet maintainable ---
-    def _normalize_line(self, s: str) -> str:
-        return re.sub(r"\s+", " ", s.strip())
-
-    def _build_normalized_index(self, full_lines: list[str]) -> dict[str, list[int]]:
-        index: dict[str, list[int]] = {}
-        for idx, fl in enumerate(full_lines, start=1):
-            nf = self._normalize_line(fl)
-            if not nf:
-                continue
-            index.setdefault(nf, []).append(idx)
-        return index
-
-    def _parse_error_output_for_lines(
-        self,
-        error_output: str,
-        full_lines: list[str],
-        normalized_index: dict[str, list[int]],
-    ) -> set[int]:
-        candidate_set: set[int] = set()
-        for raw in error_output.split("\n"):
-            ln = raw.strip()
-            if not ln:
-                continue
-            if ln.startswith("STDOUT:") or ln.startswith("STDERR:"):
-                continue
-            if (
-                ln.startswith("=== ")
-                or ln.startswith("FAILED ")
-                or ln.startswith("PASSED ")
-                or ln.startswith("Traceback")
-            ):
-                continue
-
-            # explicit line numbers, e.g., "line 12"
-            for m in re.finditer(r"\bline\s+(\d+)\b", ln):
-                try:
-                    num = int(m.group(1))
-                    if 1 <= num <= len(full_lines):
-                        candidate_set.add(num)
-                except ValueError:
-                    pass
-
-            # pytest excerpt line starting with '>'
-            if raw.lstrip().startswith(">"):
-                excerpt = raw.lstrip().lstrip(">")
-                nf = self._normalize_line(excerpt)
-                if nf in normalized_index:
-                    candidate_set.update(normalized_index[nf])
-                continue
-
-            # general normalized content match
-            nf = self._normalize_line(ln)
-            if nf and len(nf.split()) >= 2 and nf in normalized_index:
-                candidate_set.update(normalized_index[nf])
-
-            # lines prefixed with 'E '
-            if ln.startswith("E "):
-                ln_after = ln[1:].strip()
-                if ln_after:
-                    nf2 = self._normalize_line(ln_after)
-                    if nf2 and len(nf2.split()) >= 2 and nf2 in normalized_index:
-                        candidate_set.update(normalized_index[nf2])
-
-        return candidate_set
-
-    def _expand_candidate_lines(
-        self,
-        tree: ast.AST,
-        full_lines: list[str],
-        candidate_set: set[int],
-        node_span_cap: int = 20,
-    ) -> list[int]:
-        expanded: set[int] = set(candidate_set)
-        for cl in list(candidate_set):
-            if cl - 1 >= 1:
-                expanded.add(cl - 1)
-            if cl + 1 <= len(full_lines):
-                expanded.add(cl + 1)
-
-        for node in ast.walk(tree):
-            lineno = getattr(node, "lineno", None)
-            end_lineno = getattr(node, "end_lineno", lineno)
-            if lineno is None or end_lineno is None:
-                continue
-            overlaps_any = any(lineno <= cl <= end_lineno for cl in candidate_set)
-            if overlaps_any and (end_lineno - lineno + 1) <= node_span_cap:
-                for ln_i in range(lineno, end_lineno + 1):
-                    if 1 <= ln_i <= len(full_lines):
-                        expanded.add(ln_i)
-        return sorted(expanded)
-
-    def generate_relevant_ast_snippet(
-        self, problem: dict[str, Any], error_output: str
-    ) -> str:
-        """Generate a compact AST snippet focusing on nodes related to the error.
-
-        Heuristics:
-        - Match error output lines to lines in the canonical implementation and include
-          nodes whose line ranges overlap.
-        - Include nodes associated with common Python error types found in the output.
-        """
-        try:
-            entry_point = problem.get("entry_point", "")
-            # Build function text (signature + body)
-            signature = self.extract_function_signature(
-                problem.get("prompt", ""), entry_point
-            )
-            if not signature:
-                # Fallback minimal signature
-                if entry_point and entry_point.strip():
-                    signature = f"def {entry_point}(*args, **kwargs):"
-                else:
-                    signature = "def _func(*args, **kwargs):"
-            if not signature.endswith(":"):
-                signature += ":"
-            full_function = f"{signature}\n{problem.get('canonical_solution', '')}"
-
-            tree = ast.parse(full_function)
-            full_lines = full_function.splitlines()
-
-            # Candidate lines from error output
-            normalized_to_indices = self._build_normalized_index(full_lines)
-            candidate_set = self._parse_error_output_for_lines(
-                error_output, full_lines, normalized_to_indices
-            )
-            candidate_lines: list[int] = self._expand_candidate_lines(
-                tree, full_lines, candidate_set
-            )
-
-            # Error keyword → node predicate mapping
-            # Use more specific error patterns for better accuracy
-            predicates = []
-            low = error_output.lower()
-
-            # Division errors
-            if (
-                "zerodivisionerror" in low
-                or "division by zero" in low
-                or "divide by zero" in low
-            ):
-                predicates.append(
-                    lambda n: isinstance(n, ast.BinOp)
-                    and isinstance(n.op, (ast.Div, ast.Mod, ast.FloorDiv))
-                )
-
-            # Index errors
-            if (
-                "indexerror" in low
-                or "list index out of range" in low
-                or "string index out of range" in low
-                or "tuple index out of range" in low
-            ):
-                predicates.append(lambda n: isinstance(n, ast.Subscript))
-
-            # Key errors (dict/mapping access)
-            if "keyerror" in low:
-                predicates.append(lambda n: isinstance(n, ast.Subscript))
-
-            # Attribute errors
-            if "attributeerror" in low or "has no attribute" in low:
-                predicates.append(lambda n: isinstance(n, ast.Attribute))
-
-            # Type errors with operators
-            if "typeerror" in low and (
-                "operand" in low or "not supported between" in low
-            ):
-                predicates.append(lambda n: isinstance(n, ast.BinOp))
-
-            # Type errors with calls
-            if "typeerror" in low and (
-                "takes" in low or "required" in low or "argument" in low
-            ):
-                predicates.append(lambda n: isinstance(n, ast.Call))
-
-            # Value errors
-            if "valueerror" in low:
-                predicates.append(
-                    lambda n: isinstance(n, ast.Raise) or isinstance(n, ast.Call)
-                )
-
-            # Recursion errors
-            if "recursionerror" in low and entry_point:
-                predicates.append(
-                    lambda n: isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Name)
-                    and n.func.id == entry_point
-                )
-
-            # Name errors
-            if "nameerror" in low or "is not defined" in low:
-                predicates.append(lambda n: isinstance(n, ast.Name))
-
-            # Import errors
-            if "importerror" in low or "modulenotfounderror" in low:
-                predicates.append(lambda n: isinstance(n, (ast.Import, ast.ImportFrom)))
-
-            # Collect nodes with priority scoring
-            node_scores: list[tuple[ast.AST, int]] = []
-
-            for node in ast.walk(tree):
-                lineno = getattr(node, "lineno", None)
-                end_lineno = getattr(node, "end_lineno", lineno)
-
-                # Check if node overlaps with error lines
-                overlaps = False
-                if lineno is not None:
-                    for cl in candidate_lines:
-                        if lineno <= cl <= (end_lineno or lineno):
-                            overlaps = True
-                            break
-
-                # Check if node matches error-specific predicates
-                matches = (
-                    any(pred(node) for pred in predicates) if predicates else False
-                )
-
-                # Define interesting node types
-                interesting = isinstance(
-                    node,
-                    (
-                        ast.If,
-                        ast.For,
-                        ast.While,
-                        ast.With,
-                        ast.Try,
-                        ast.Assign,
-                        ast.AugAssign,
-                        ast.Return,
-                        ast.Raise,
-                        ast.Call,
-                        ast.BinOp,
-                        ast.BoolOp,
-                        ast.Compare,
-                        ast.Subscript,
-                        ast.Attribute,
-                        ast.ListComp,
-                        ast.DictComp,
-                        ast.SetComp,
-                        ast.GeneratorExp,
-                        ast.Lambda,
-                        ast.Name,
-                    ),
-                )
-
-                if interesting:
-                    # Calculate priority score
-                    score = 0
-                    if matches:
-                        score += AST_SCORE_ERROR_MATCH  # High priority for error-specific matches
-                    if overlaps:
-                        score += (
-                            AST_SCORE_LINE_OVERLAP  # Medium priority for line overlaps
-                        )
-
-                    # Additional scoring based on node type relevance
-                    if isinstance(
-                        node, (ast.Call, ast.BinOp, ast.Subscript, ast.Attribute)
-                    ):
-                        score += AST_SCORE_COMMON_ERROR  # Common error sources
-
-                    if score > 0:
-                        node_scores.append((node, score))
-
-            # Sort by score (highest first) and select top nodes
-            node_scores.sort(key=lambda x: x[1], reverse=True)
-            selected = [
-                node for node, _ in node_scores[:MAX_AST_NODES]
-            ]  # Limit to most relevant nodes
-
-            if not selected:
-                # Fallback: first few body statements for some structure
-                func_def = next(
-                    (n for n in tree.body if isinstance(n, ast.FunctionDef)), None
-                )
-                if func_def and func_def.body:
-                    selected.extend(func_def.body[:3])
-
-            # Generate concise AST representations
-            parts: list[str] = []
-            seen_nodes = set()  # Avoid duplicate nodes
-
-            for n in selected:
-                # Create a unique identifier for the node to avoid duplicates
-                node_id = (
-                    type(n).__name__,
-                    getattr(n, "lineno", None),
-                    getattr(n, "col_offset", None),
-                )
-                if node_id in seen_nodes:
-                    continue
-                seen_nodes.add(node_id)
-
-                try:
-                    # Create a more concise representation
-                    node_info = f"Line {getattr(n, 'lineno', '?')}: {type(n).__name__}"
-
-                    # Add relevant details based on node type
-                    if isinstance(n, ast.BinOp):
-                        node_info += f" ({type(n.op).__name__})"
-                    elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
-                        node_info += f" ({n.func.id})"
-                    elif isinstance(n, ast.Attribute):
-                        node_info += f" (.{n.attr})"
-                    elif isinstance(n, ast.Name):
-                        node_info += f" ({n.id})"
-
-                    # Add the full AST dump
-                    parts.append(f"{node_info}\n{ast.dump(n, indent=2)}")
-                except Exception:
-                    parts.append(
-                        f"Line {getattr(n, 'lineno', '?')}: {type(n).__name__}"
-                    )
-
-            return (
-                "\n\n".join(parts[:MAX_AST_OUTPUT_NODES])
-                if parts
-                else "(no relevant AST nodes found)"
-            )
-        except Exception as e:
-            return f"Error generating relevant AST snippet: {e}"
 
     def generate_prompt(self, problem: dict[str, Any]) -> str:
         """Create a prompt for Claude to generate test cases.
@@ -753,14 +423,13 @@ class TestCaseGenerator:
                 "prompt_config": {
                     "include_docstring": self.include_docstring,
                     "include_ast": self.include_ast,
-                    "ast_fix": self.ast_fix,
                     "template_hash": self.prompt_builder.get_template_hash(
                         self.include_docstring, self.include_ast
                     ),
                 },
             }
         )
-        
+
         # Add HumanEvalPack-specific stats
         if self.dataset_type == "humanevalpack":
             # True bug detection only if assertion error
@@ -769,7 +438,7 @@ class TestCaseGenerator:
                 if canonical_passed is not None
                 else None
             )
-            
+
             final_stats.update(
                 {
                     "bug_type": problem.get("bug_type", "unknown"),
@@ -937,7 +606,7 @@ class TestCaseGenerator:
                 prompt=prompt,
                 model=self.model_mapping[model],
                 max_tokens=DEFAULT_MAX_TOKENS,
-            temperature=DEFAULT_TEMPERATURE,
+                temperature=DEFAULT_TEMPERATURE,
             )
 
             # Track token usage and cost
@@ -964,13 +633,13 @@ class TestCaseGenerator:
         """Save generated test cases to a file."""
         # Create model-specific output directory
         model_folder = self.get_model_folder_name(model)
-        
+
         # Add dataset type to directory name for HumanEvalPack
         if self.dataset_type == "humanevalpack":
             model_output_dir = f"{output_dir}_humanevalpack_{model_folder}"
         else:
             model_output_dir = f"{output_dir}_{model_folder}"
-        
+
         output_path = Path(model_output_dir)
         output_path.mkdir(exist_ok=True)
 
@@ -987,8 +656,6 @@ class TestCaseGenerator:
             filename_parts.append("docstring")
         if self.include_ast:
             filename_parts.append("ast")
-        if getattr(self, "ast_fix", False):
-            filename_parts.append("ast-fix")
 
         filename = f"{'_'.join(filename_parts)}.py"
         filepath = output_path / filename
@@ -1040,7 +707,6 @@ class TestCaseGenerator:
         error_output: str,
         attempt: int,
         problem: dict[str, Any],
-        ast_snippet: Optional[str] = None,
     ) -> str:
         """Generate a prompt to fix test case errors with white box testing approach.
 
@@ -1054,7 +720,6 @@ class TestCaseGenerator:
             max_attempts=self.get_total_fix_attempts(),
             include_docstring=self.include_docstring,
             include_ast=self.include_ast,
-            ast_snippet=ast_snippet if self.ast_fix else None,
         )
 
     def fix_test_cases(
@@ -1069,13 +734,7 @@ class TestCaseGenerator:
 
         Uses the unified LLM client interface for cleaner code.
         """
-        ast_snippet: Optional[str] = None
-        if self.ast_fix:
-            ast_snippet = self.generate_relevant_ast_snippet(problem, error_output)
-
-        fix_prompt = self.generate_fix_prompt(
-            test_code, error_output, attempt, problem, ast_snippet
-        )
+        fix_prompt = self.generate_fix_prompt(test_code, error_output, attempt, problem)
 
         # Display the fix prompt if verbose mode is enabled
         should_proceed = self.display_fix_prompt(fix_prompt, attempt)
@@ -1102,14 +761,14 @@ class TestCaseGenerator:
 
             cost = self.calculate_cost(
                 response.input_tokens, response.output_tokens, model
-                )
+            )
             self.total_cost += cost
 
             if self.verbose_evaluation:
                 print(
-                f"💰 Fix attempt {attempt} cost: ${cost:.6f} "
-                f"(Input: {response.input_tokens}, Output: {response.output_tokens})"
-                    )
+                    f"💰 Fix attempt {attempt} cost: ${cost:.6f} "
+                    f"(Input: {response.input_tokens}, Output: {response.output_tokens})"
+                )
 
             cleaned_response = self.clean_generated_code(response.content)
 
@@ -1129,10 +788,10 @@ class TestCaseGenerator:
         """Analyze pytest output to determine the type of failure.
 
         Delegates to FailureAnalyzer for cleaner code.
-        
+
         Args:
             error_output: The complete pytest output
-            
+
         Returns:
             str: Type of failure ('assertion', 'syntax', 'import', 'runtime', 'timeout', 'unknown')
         """
@@ -1144,7 +803,7 @@ class TestCaseGenerator:
         """Evaluate if generated tests can detect bugs in HumanEvalPack.
 
         Delegates to BugDetector for cleaner code.
-        
+
         Returns:
             tuple[bool, bool, str, float, float]: (canonical_passed, buggy_failed_with_assertion, failure_type, final_c0_coverage, final_c1_coverage)
         """
@@ -1298,7 +957,7 @@ class TestCaseGenerator:
                 evaluation_success, fix_attempts_used, c0_coverage, c1_coverage = (
                     self.evaluate_and_fix_tests(filepath, problem, model)
                 )
-                
+
                 # For HumanEvalPack, run additional bug detection evaluation
                 if self.dataset_type == "humanevalpack" and evaluation_success:
                     print(
@@ -1316,16 +975,16 @@ class TestCaseGenerator:
                     # (which re-runs tests with canonical solution to get accurate coverage)
                     c0_coverage = bug_c0_cov
                     c1_coverage = bug_c1_cov
-                    
+
                     print(
                         f"📊 Coverage after bug detection: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
                     )
                     print(
                         f"📊 Final coverage to be saved: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
                     )
-                    
+
                     bug_detection_success = canonical_passed and buggy_failed
-                    
+
                     if bug_detection_success:
                         print(
                             f"🎉 Test generation completed with TRUE bug detection for {model}!"
@@ -1338,7 +997,7 @@ class TestCaseGenerator:
                         print(
                             f"⚠️  Test generation completed but bug detection failed for {model}"
                         )
-                
+
                 if evaluation_success:
                     print(
                         f"🎉 Test generation and evaluation completed successfully for {model}!"
@@ -1451,20 +1110,22 @@ class TestCaseGenerator:
         self, task_id: str, output_dir: str = "generated_tests"
     ) -> list[str]:
         """Generate test cases for a specific problem by task_id.
-        
+
         Args:
             task_id: Problem identifier. Can be:
                      - Number only: "0", "5", "10" (automatically adds prefix)
                      - Full ID: "HumanEval/0", "Python/0" (used as-is)
             output_dir: Output directory for generated tests
-            
+
         Returns:
             List of generated test file paths
         """
         # Normalize task_id based on dataset type
         normalized_task_id = self._normalize_task_id(task_id)
-        
-        problem = next((p for p in self.problems if p["task_id"] == normalized_task_id), None)
+
+        problem = next(
+            (p for p in self.problems if p["task_id"] == normalized_task_id), None
+        )
         if not problem:
             raise ValueError(
                 f"Problem {normalized_task_id} not found in {self.dataset_type} dataset. "
@@ -1472,13 +1133,13 @@ class TestCaseGenerator:
             )
 
         return self._generate_and_evaluate_test_cases(problem, output_dir)
-    
+
     def _normalize_task_id(self, task_id: str) -> str:
         """Normalize task_id based on dataset type.
-        
+
         Args:
             task_id: Raw task ID (e.g., "0", "HumanEval/0", "Python/0")
-            
+
         Returns:
             Normalized task ID with proper prefix
         """
@@ -1488,7 +1149,7 @@ class TestCaseGenerator:
                 return f"Python/{task_id}"
             else:
                 return f"HumanEval/{task_id}"
-        
+
         # If task_id already has a prefix, use it as-is
         return task_id
 
@@ -1511,8 +1172,8 @@ def main():
         help="Output directory for test files",
     )
     parser.add_argument(
-        "--task-id", 
-        help="Specific task ID to generate tests for (e.g., '0', '5' or 'HumanEval/0')"
+        "--task-id",
+        help="Specific task ID to generate tests for (e.g., '0', '5' or 'HumanEval/0')",
     )
     parser.add_argument("--api-key", help="Claude API key (or set in .env file)")
     parser.add_argument(
@@ -1556,11 +1217,6 @@ def main():
         "--quiet-evaluation",
         action="store_true",
         help="Disable verbose output during error fixing process",
-    )
-    parser.add_argument(
-        "--ast-fix",
-        action="store_true",
-        help="Enable AST-focused error fixing (adds relevant AST snippet to LLM fix prompts)",
     )
     parser.add_argument(
         "--dataset-type",
@@ -1638,7 +1294,6 @@ def main():
             enable_evaluation=not args.disable_evaluation,
             max_fix_attempts=args.max_fix_attempts,
             verbose_evaluation=not args.quiet_evaluation,
-            ast_fix=args.ast_fix,
             dataset_type=args.dataset_type,
         )
 

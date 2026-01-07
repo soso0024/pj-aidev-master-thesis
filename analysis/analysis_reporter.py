@@ -45,7 +45,6 @@ class AnalysisReporter:
         """Generate all analysis reports."""
         print("Generating analysis reports...")
         self.print_summary_stats()
-        self.print_ast_fix_analysis()
         self.print_efficiency_analysis()
         self.print_statistical_significance_tests()
         print("\nAnalysis reports completed!")
@@ -100,59 +99,6 @@ class AnalysisReporter:
 
         # Add dataset-aware analysis
         self.print_dataset_analysis()
-
-    def print_ast_fix_analysis(self) -> None:
-        """Print analysis comparing runs with and without ast-fix option.
-
-        Robust to missing optional columns like fix_attempts_used, total_cost_usd,
-        and code_coverage_percent.
-        """
-        if "has_ast_fix" not in self.df.columns or "success" not in self.df.columns:
-            return
-
-        print("\n" + "=" * 80)
-        print("AST-FIX ANALYSIS")
-        print("=" * 80)
-
-        # Build aggregation dict based on available columns
-        agg_dict = {
-            "success_rate": ("success", "mean"),
-            "samples": ("success", "count"),
-        }
-        if "fix_attempts_used" in self.df.columns:
-            agg_dict["avg_fix_attempts"] = ("fix_attempts_used", "mean")
-        if "total_cost_usd" in self.df.columns:
-            agg_dict["avg_cost_usd"] = ("total_cost_usd", "mean")
-        if "code_coverage_percent" in self.df.columns:
-            agg_dict["avg_coverage"] = ("code_coverage_percent", "mean")
-
-        grouped = (
-            self.df.groupby(["has_ast_fix", "config_type"], observed=False)
-            .agg(**agg_dict)
-            .reset_index()
-        )
-
-        if grouped.empty:
-            print("No data available for ast-fix analysis.")
-            return
-
-        # Pretty print
-        for has_ast_fix in [False, True]:
-            subset = grouped[grouped["has_ast_fix"] == has_ast_fix]
-            label = "WITH ast-fix" if has_ast_fix else "WITHOUT ast-fix"
-            print(f"\n{label}:")
-            for _, row in subset.iterrows():
-                fields = [
-                    f"success={row['success_rate']*100:.1f}% (n={int(row['samples'])})",
-                ]
-                if "avg_fix_attempts" in row.index:
-                    fields.append(f"fix_attempts={row['avg_fix_attempts']:.2f}")
-                if "avg_cost_usd" in row.index:
-                    fields.append(f"cost=${row['avg_cost_usd']:.4f}")
-                if "avg_coverage" in row.index:
-                    fields.append(f"coverage={row['avg_coverage']:.1f}%")
-
-                print(f"  {row['config_type']}: " + ", ".join(fields))
 
     def print_dataset_analysis(self) -> None:
         """Print dataset-aware analysis including complexity and algorithm type breakdown."""
@@ -298,12 +244,18 @@ class AnalysisReporter:
         print("EFFICIENCY METRICS ANALYSIS")
         print("=" * 80)
         print("\nMetric Definitions:")
-        print(f"  CCE-C0: C0 Coverage / (Cost × {COST_MULTIPLIER}) - Statement coverage efficiency")
-        print(f"  CCE-C1: C1 Coverage / (Cost × {COST_MULTIPLIER}) - Branch coverage efficiency")
+        print(
+            f"  CCE-C0: C0 Coverage / (Cost × {COST_MULTIPLIER}) - Statement coverage efficiency"
+        )
+        print(
+            f"  CCE-C1: C1 Coverage / (Cost × {COST_MULTIPLIER}) - Branch coverage efficiency"
+        )
         print(
             f"  SCCE:   Success × ({C0_WEIGHT}×C0 + {C1_WEIGHT}×C1) / (Cost × {COST_MULTIPLIER})"
         )
-        print(f"\n  Note: C1 weight ({C1_WEIGHT}) > C0 weight ({C0_WEIGHT}) because C1 ⊃ C0")
+        print(
+            f"\n  Note: C1 weight ({C1_WEIGHT}) > C0 weight ({C0_WEIGHT}) because C1 ⊃ C0"
+        )
 
         # Ensure C0/C1 columns exist with fallback
         if "code_coverage_c0_percent" not in self.df.columns:
@@ -392,7 +344,7 @@ class AnalysisReporter:
 
     def _cohens_d(self, group1: np.ndarray, group2: np.ndarray) -> float:
         """Calculate Cohen's d effect size between two groups.
-        
+
         Cohen's d interpretation:
         - |d| < 0.2: negligible effect
         - 0.2 ≤ |d| < 0.5: small effect
@@ -402,21 +354,21 @@ class AnalysisReporter:
         n1, n2 = len(group1), len(group2)
         if n1 < 2 or n2 < 2:
             return np.nan
-        
+
         var1 = np.var(group1, ddof=1)
         var2 = np.var(group2, ddof=1)
-        
+
         # Pooled standard deviation
         pooled_std = np.sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
-        
+
         if pooled_std == 0:
             return 0.0
-        
+
         return (np.mean(group1) - np.mean(group2)) / pooled_std
 
     def _cliffs_delta(self, group1: np.ndarray, group2: np.ndarray) -> float:
         """Calculate Cliff's delta (non-parametric effect size).
-        
+
         Cliff's delta interpretation:
         - |δ| < 0.147: negligible
         - 0.147 ≤ |δ| < 0.33: small
@@ -426,20 +378,20 @@ class AnalysisReporter:
         n1, n2 = len(group1), len(group2)
         if n1 == 0 or n2 == 0:
             return np.nan
-        
+
         # Count dominance
         greater = sum(1 for x in group1 for y in group2 if x > y)
         less = sum(1 for x in group1 for y in group2 if x < y)
-        
+
         return (greater - less) / (n1 * n2)
 
     def _interpret_effect_size(self, d: float, metric: str = "cohens_d") -> str:
         """Interpret effect size magnitude."""
         if np.isnan(d):
             return "N/A"
-        
+
         abs_d = abs(d)
-        
+
         if metric == "cohens_d":
             if abs_d < 0.2:
                 return "negligible"
@@ -460,23 +412,26 @@ class AnalysisReporter:
                 return "large"
 
     def _bootstrap_ci(
-        self, data: np.ndarray, statistic: str = "mean", 
-        confidence: float = 0.95, n_iterations: int = 10000
+        self,
+        data: np.ndarray,
+        statistic: str = "mean",
+        confidence: float = 0.95,
+        n_iterations: int = 10000,
     ) -> Tuple[float, float]:
         """Calculate bootstrap confidence interval.
-        
+
         Args:
             data: Input data array
             statistic: "mean" or "median"
             confidence: Confidence level (default 95%)
             n_iterations: Number of bootstrap iterations
-            
+
         Returns:
             Tuple of (lower_bound, upper_bound)
         """
         if len(data) < 2:
             return (np.nan, np.nan)
-        
+
         # Bootstrap resampling
         bootstrap_stats = []
         for _ in range(n_iterations):
@@ -485,12 +440,12 @@ class AnalysisReporter:
                 bootstrap_stats.append(np.mean(sample))
             else:
                 bootstrap_stats.append(np.median(sample))
-        
+
         # Calculate percentiles
         alpha = 1 - confidence
         lower = np.percentile(bootstrap_stats, alpha / 2 * 100)
         upper = np.percentile(bootstrap_stats, (1 - alpha / 2) * 100)
-        
+
         return (lower, upper)
 
     def _format_p_value(self, p: float) -> str:
@@ -508,7 +463,7 @@ class AnalysisReporter:
 
     def print_statistical_significance_tests(self) -> None:
         """Print comprehensive statistical significance tests for research papers.
-        
+
         Includes:
         - Kruskal-Wallis H-test (overall group comparison)
         - Pairwise Mann-Whitney U tests with Bonferroni correction
@@ -524,9 +479,9 @@ class AnalysisReporter:
         print("=" * 80)
         print("\nNote: Statistical tests for research paper validation")
         print("  * p < 0.05, ** p < 0.01, *** p < 0.001")
-        
+
         config_types = sorted(self.df["config_type"].unique())
-        
+
         if len(config_types) < 2:
             print("\nNeed at least 2 configuration types for comparison.")
             return
@@ -538,7 +493,7 @@ class AnalysisReporter:
             ("total_cost_usd", "Total Cost (USD)"),
             ("fix_attempts_used", "Fix Attempts"),
         ]
-        
+
         # Add C0/C1 if available
         if "code_coverage_c0_percent" in self.df.columns:
             metrics.append(("code_coverage_c0_percent", "C0 Coverage (%)"))
@@ -548,11 +503,11 @@ class AnalysisReporter:
         for metric_col, metric_name in metrics:
             if metric_col not in self.df.columns:
                 continue
-                
+
             print(f"\n{'─' * 80}")
             print(f"📊 {metric_name}")
             print("─" * 80)
-            
+
             # Prepare data for each configuration
             groups = {}
             for config in config_types:
@@ -569,29 +524,39 @@ class AnalysisReporter:
             # ================================================================
             print("\n  📈 Descriptive Statistics (with 95% CI):")
             print("  " + "-" * 70)
-            print(f"  {'Config':<15} | {'Mean':>10} | {'Std':>8} | {'95% CI':>20} | {'n':>5}")
+            print(
+                f"  {'Config':<15} | {'Mean':>10} | {'Std':>8} | {'95% CI':>20} | {'n':>5}"
+            )
             print("  " + "-" * 70)
-            
+
             for config, data in groups.items():
                 mean = np.mean(data)
                 std = np.std(data, ddof=1) if len(data) > 1 else 0
                 ci_low, ci_high = self._bootstrap_ci(data, "mean", 0.95, 5000)
                 n = len(data)
-                
+
                 # Format based on metric type
                 if metric_col == "total_cost_usd":
-                    print(f"  {config:<15} | ${mean:>9.6f} | ${std:>7.6f} | "
-                          f"[${ci_low:.6f}, ${ci_high:.6f}] | {n:>5}")
+                    print(
+                        f"  {config:<15} | ${mean:>9.6f} | ${std:>7.6f} | "
+                        f"[${ci_low:.6f}, ${ci_high:.6f}] | {n:>5}"
+                    )
                 elif "percent" in metric_col or metric_col == "success":
                     display_mean = mean * 100 if metric_col == "success" else mean
                     display_std = std * 100 if metric_col == "success" else std
                     display_ci_low = ci_low * 100 if metric_col == "success" else ci_low
-                    display_ci_high = ci_high * 100 if metric_col == "success" else ci_high
-                    print(f"  {config:<15} | {display_mean:>9.1f}% | {display_std:>7.1f}% | "
-                          f"[{display_ci_low:.1f}%, {display_ci_high:.1f}%] | {n:>5}")
+                    display_ci_high = (
+                        ci_high * 100 if metric_col == "success" else ci_high
+                    )
+                    print(
+                        f"  {config:<15} | {display_mean:>9.1f}% | {display_std:>7.1f}% | "
+                        f"[{display_ci_low:.1f}%, {display_ci_high:.1f}%] | {n:>5}"
+                    )
                 else:
-                    print(f"  {config:<15} | {mean:>10.2f} | {std:>8.2f} | "
-                          f"[{ci_low:.2f}, {ci_high:.2f}] | {n:>5}")
+                    print(
+                        f"  {config:<15} | {mean:>10.2f} | {std:>8.2f} | "
+                        f"[{ci_low:.2f}, {ci_high:.2f}] | {n:>5}"
+                    )
 
             # ================================================================
             # 2. KRUSKAL-WALLIS H-TEST (Overall comparison)
@@ -603,7 +568,7 @@ class AnalysisReporter:
                     h_stat, p_value = stats.kruskal(*group_arrays)
                     print(f"      H-statistic: {h_stat:.4f}")
                     print(f"      p-value:     {self._format_p_value(p_value)}")
-                    
+
                     if p_value < 0.05:
                         print("      → Significant difference exists between groups")
                     else:
@@ -617,30 +582,38 @@ class AnalysisReporter:
             config_pairs = list(combinations(groups.keys(), 2))
             n_comparisons = len(config_pairs)
             bonferroni_alpha = 0.05 / n_comparisons if n_comparisons > 0 else 0.05
-            
+
             if n_comparisons > 0:
-                print(f"\n  🔍 Pairwise Mann-Whitney U Tests (Bonferroni α = {bonferroni_alpha:.4f}):")
+                print(
+                    f"\n  🔍 Pairwise Mann-Whitney U Tests (Bonferroni α = {bonferroni_alpha:.4f}):"
+                )
                 print("  " + "-" * 70)
-                print(f"  {'Comparison':<25} | {'U-stat':>10} | {'p-value':>15} | {'Significant':>10}")
+                print(
+                    f"  {'Comparison':<25} | {'U-stat':>10} | {'p-value':>15} | {'Significant':>10}"
+                )
                 print("  " + "-" * 70)
-                
+
                 pairwise_results = []
                 for config1, config2 in config_pairs:
                     try:
                         u_stat, p_value = stats.mannwhitneyu(
-                            groups[config1], groups[config2], alternative='two-sided'
+                            groups[config1], groups[config2], alternative="two-sided"
                         )
                         significant = "Yes" if p_value < bonferroni_alpha else "No"
-                        pairwise_results.append({
-                            "pair": f"{config1} vs {config2}",
-                            "u_stat": u_stat,
-                            "p_value": p_value,
-                            "significant": significant,
-                            "config1": config1,
-                            "config2": config2
-                        })
-                        print(f"  {config1} vs {config2:<10} | {u_stat:>10.1f} | "
-                              f"{self._format_p_value(p_value):>15} | {significant:>10}")
+                        pairwise_results.append(
+                            {
+                                "pair": f"{config1} vs {config2}",
+                                "u_stat": u_stat,
+                                "p_value": p_value,
+                                "significant": significant,
+                                "config1": config1,
+                                "config2": config2,
+                            }
+                        )
+                        print(
+                            f"  {config1} vs {config2:<10} | {u_stat:>10.1f} | "
+                            f"{self._format_p_value(p_value):>15} | {significant:>10}"
+                        )
                     except Exception as e:
                         print(f"  {config1} vs {config2:<10} | Could not compute: {e}")
 
@@ -652,22 +625,26 @@ class AnalysisReporter:
                 print("  " + "-" * 70)
                 cohens_label = "Cohen's d"
                 cliffs_label = "Cliff's δ"
-                print(f"  {'Comparison':<25} | {cohens_label:>10} | {'Interpretation':>12} | "
-                      f"{cliffs_label:>10} | {'Interpretation':>12}")
+                print(
+                    f"  {'Comparison':<25} | {cohens_label:>10} | {'Interpretation':>12} | "
+                    f"{cliffs_label:>10} | {'Interpretation':>12}"
+                )
                 print("  " + "-" * 70)
-                
+
                 for config1, config2 in config_pairs:
                     d = self._cohens_d(groups[config1], groups[config2])
                     delta = self._cliffs_delta(groups[config1], groups[config2])
-                    
+
                     d_interp = self._interpret_effect_size(d, "cohens_d")
                     delta_interp = self._interpret_effect_size(delta, "cliffs_delta")
-                    
+
                     d_str = f"{d:.3f}" if not np.isnan(d) else "N/A"
                     delta_str = f"{delta:.3f}" if not np.isnan(delta) else "N/A"
-                    
-                    print(f"  {config1} vs {config2:<10} | {d_str:>10} | {d_interp:>12} | "
-                          f"{delta_str:>10} | {delta_interp:>12}")
+
+                    print(
+                        f"  {config1} vs {config2:<10} | {d_str:>10} | {d_interp:>12} | "
+                        f"{delta_str:>10} | {delta_interp:>12}"
+                    )
 
         # ================================================================
         # SUMMARY FOR PAPER
@@ -675,7 +652,8 @@ class AnalysisReporter:
         print("\n" + "=" * 80)
         print("📝 SUMMARY FOR RESEARCH PAPER")
         print("=" * 80)
-        print("""
+        print(
+            """
 Statistical analysis was performed using non-parametric tests due to 
 the nature of the data. The Kruskal-Wallis H-test was used for overall
 group comparisons, followed by pairwise Mann-Whitney U tests with 
@@ -692,4 +670,5 @@ Effect size interpretation (Cohen's d):
 
 Effect size interpretation (Cliff's δ):
   - |δ| < 0.147: negligible, 0.147-0.33: small, 0.33-0.474: medium, ≥0.474: large
-""")
+"""
+        )
