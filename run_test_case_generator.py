@@ -316,9 +316,9 @@ class TestCaseGenerator:
         estimated_tokens = len(prompt) // 4
         # Use the first model for cost estimation in prompt preview
         first_model = self.models[0] if self.models else self.config["default_model"]
-        estimated_cost = (estimated_tokens / 1000) * self.config["models"][first_model][
+        estimated_cost = (estimated_tokens / 1_000_000) * self.config["models"][first_model][
             "pricing"
-        ]["input_per_1k"]
+        ]["input_per_1M"]
 
         print(f"Estimated input tokens: {estimated_tokens}")
         print(f"Estimated input cost: ${estimated_cost:.6f}")
@@ -339,8 +339,8 @@ class TestCaseGenerator:
     ) -> float:
         """Calculate the cost based on token usage and model."""
         pricing = self.config["models"][model]["pricing"]
-        input_cost = (input_tokens / 1000) * pricing["input_per_1k"]
-        output_cost = (output_tokens / 1000) * pricing["output_per_1k"]
+        input_cost = (input_tokens / 1_000_000) * pricing["input_per_1M"]
+        output_cost = (output_tokens / 1_000_000) * pricing["output_per_1M"]
         return input_cost + output_cost
 
     def get_total_fix_attempts(self) -> int:
