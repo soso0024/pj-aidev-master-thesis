@@ -10,7 +10,7 @@
       }
     },
     "claude-4-5-haiku": {
-      "api_name": "claude-4-5-haiku",
+      "api_name": "claude-haiku-4-5-20251001",
       "folder_name": "claude-4-5-haiku",
       "provider": "anthropic",
       "pricing": {
@@ -28,7 +28,7 @@
       }
     },
     "gpt-5.2": {
-      "api_name": "gpt-5.2",
+      "api_name": "gpt-5.2-2025-12-11",
       "folder_name": "gpt-5-2",
       "provider": "openai",
       "pricing": {
@@ -37,7 +37,7 @@
       }
     },
     "gpt-5.1": {
-      "api_name": "gpt-5.1",
+      "api_name": "gpt-5.1-2025-11-13",
       "folder_name": "gpt-5-1",
       "provider": "openai",
       "pricing": {
