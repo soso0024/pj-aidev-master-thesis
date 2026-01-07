@@ -23,6 +23,14 @@ class PromptBuilder:
         (True, True): "docstring_ast.txt",  # With docstring, with AST
     }
 
+    # Fix template mapping for error correction prompts
+    FIX_TEMPLATE_MAPPING = {
+        (False, False): "fix_basic.txt",  # No docstring, no AST
+        (True, False): "fix_docstring.txt",  # With docstring, no AST
+        (False, True): "fix_ast.txt",  # No docstring, with AST
+        (True, True): "fix_docstring_ast.txt",  # With docstring, with AST
+    }
+
     def __init__(self, prompts_dir: str = None):
         """
         Initialize the prompt builder.
@@ -42,7 +50,15 @@ class PromptBuilder:
     def _validate_templates(self) -> None:
         """Validate that all required template files exist."""
         missing_templates = []
+        
+        # Check generation templates
         for template_file in self.TEMPLATE_MAPPING.values():
+            template_path = self.prompts_dir / template_file
+            if not template_path.exists():
+                missing_templates.append(template_file)
+        
+        # Check fix templates
+        for template_file in self.FIX_TEMPLATE_MAPPING.values():
             template_path = self.prompts_dir / template_file
             if not template_path.exists():
                 missing_templates.append(template_file)
@@ -241,7 +257,7 @@ class PromptBuilder:
         include_ast: bool = False,
     ) -> str:
         """
-        Build a prompt for fixing test case errors.
+        Build a prompt for fixing test case errors from template.
 
         Args:
             problem: Dictionary containing problem data
@@ -281,39 +297,26 @@ class PromptBuilder:
 
         fix_attempt_line = f"This is fix attempt {attempt} of {max_attempts}."
 
-        return f"""The following test code has errors when running pytest. Please fix the issues and return ONLY the corrected Python code, no explanations or markdown.
+        # Load template and render
+        template_name = self.FIX_TEMPLATE_MAPPING[(include_docstring, include_ast)]
+        template = self.load_template(template_name)
 
-FUNCTION BEING TESTED:
-```python
-{function_info}
-{problem['canonical_solution']}
-```
-{ast_section}
+        template_vars = {
+            "function_info": function_info,
+            "canonical_solution": problem["canonical_solution"],
+            "ast_section": ast_section,
+            "test_code": test_code,
+            "error_output": error_output,
+            "fix_attempt_line": fix_attempt_line,
+        }
 
-CURRENT TEST CODE WITH ERRORS:
-```python
-{test_code}
-```
-
-PYTEST ERROR OUTPUT:
-```
-{error_output}
-```
-
- {fix_attempt_line}
-
-Requirements:
-- Return ONLY executable Python code that can be run directly
-- Fix all syntax errors, import errors, and test failures
-- Use the provided function implementation to understand expected behavior
-- Ensure tests properly validate the function's actual behavior
-- Maintain comprehensive test coverage
-- DO NOT include explanations, markdown, or code blocks
-- DO NOT wrap code in ```python``` blocks
-- DO NOT include the function implementation in your response (it's already in the file)
-- Start your response with the corrected imports
-
-Corrected code:"""
+        try:
+            return template.format(**template_vars)
+        except KeyError as e:
+            raise ValueError(
+                f"Fix template '{template_name}' requires variable {e} "
+                f"but it was not provided"
+            )
 
     def get_template_hash(
         self, include_docstring: bool = False, include_ast: bool = False

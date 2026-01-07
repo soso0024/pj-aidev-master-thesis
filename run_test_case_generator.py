@@ -316,9 +316,9 @@ class TestCaseGenerator:
         estimated_tokens = len(prompt) // 4
         # Use the first model for cost estimation in prompt preview
         first_model = self.models[0] if self.models else self.config["default_model"]
-        estimated_cost = (estimated_tokens / 1000) * self.config["models"][first_model][
+        estimated_cost = (estimated_tokens / 1_000_000) * self.config["models"][first_model][
             "pricing"
-        ]["input_per_1k"]
+        ]["input_per_1M"]
 
         print(f"Estimated input tokens: {estimated_tokens}")
         print(f"Estimated input cost: ${estimated_cost:.6f}")
@@ -339,8 +339,8 @@ class TestCaseGenerator:
     ) -> float:
         """Calculate the cost based on token usage and model."""
         pricing = self.config["models"][model]["pricing"]
-        input_cost = (input_tokens / 1000) * pricing["input_per_1k"]
-        output_cost = (output_tokens / 1000) * pricing["output_per_1k"]
+        input_cost = (input_tokens / 1_000_000) * pricing["input_per_1M"]
+        output_cost = (output_tokens / 1_000_000) * pricing["output_per_1M"]
         return input_cost + output_cost
 
     def get_total_fix_attempts(self) -> int:
@@ -432,9 +432,9 @@ class TestCaseGenerator:
 
         # Add HumanEvalPack-specific stats
         if self.dataset_type == "humanevalpack":
-            # True bug detection only if assertion error
-            true_bug_detection = (
-                canonical_passed and buggy_failed
+            # Bug detection success only if assertion error
+            bug_detection_success_value = (
+                canonical_passed and buggy_failed and failure_type == "assertion"
                 if canonical_passed is not None
                 else None
             )
@@ -442,15 +442,14 @@ class TestCaseGenerator:
             final_stats.update(
                 {
                     "bug_type": problem.get("bug_type", "unknown"),
-                    "bug_detection_success": true_bug_detection,
+                    "bug_detection_success": bug_detection_success_value,
                     "canonical_solution_passed": canonical_passed,
                     "buggy_solution_failed": buggy_failed,
                     "buggy_failure_type": failure_type,
-                    "is_true_positive": true_bug_detection
-                    and failure_type == "assertion",
+                    "is_true_positive": bug_detection_success_value,
                     "is_false_positive": (
                         canonical_passed
-                        and buggy_failed is not False
+                        and buggy_failed
                         and failure_type not in ["assertion", "none", None]
                     ),
                 }
@@ -802,18 +801,19 @@ class TestCaseGenerator:
 
     def evaluate_bug_detection(
         self, test_file_path: str, problem: dict[str, Any]
-    ) -> tuple[bool, bool, str, float, float]:
+    ) -> tuple[bool, bool, bool, str, float, float]:
         """Evaluate if generated tests can detect bugs in HumanEvalPack.
 
         Delegates to BugDetector for cleaner code.
 
         Returns:
-            tuple[bool, bool, str, float, float]: (canonical_passed, buggy_failed_with_assertion, failure_type, final_c0_coverage, final_c1_coverage)
+            tuple[bool, bool, bool, str, float, float]: (canonical_passed, buggy_failed, true_bug_detected, failure_type, final_c0_coverage, final_c1_coverage)
         """
         result = self.bug_detector.evaluate(test_file_path, problem)
 
         return (
             result.canonical_passed,
+            result.buggy_failed,
             result.true_bug_detected,
             result.failure_type.value,
             result.c0_coverage,
@@ -969,6 +969,7 @@ class TestCaseGenerator:
                     (
                         canonical_passed,
                         buggy_failed,
+                        true_bug_detected,
                         failure_type,
                         bug_c0_cov,
                         bug_c1_cov,
@@ -985,7 +986,7 @@ class TestCaseGenerator:
                         f"📊 Final coverage to be saved: C0={c0_coverage:.1f}%, C1={c1_coverage:.1f}%"
                     )
 
-                    bug_detection_success = canonical_passed and buggy_failed
+                    bug_detection_success = canonical_passed and true_bug_detected
 
                     if bug_detection_success:
                         print(

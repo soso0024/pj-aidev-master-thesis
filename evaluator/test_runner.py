@@ -57,7 +57,14 @@ class TestRunner:
         """
         # Use absolute path and run from project root
         abs_path = Path(test_file_path).resolve()
-        cmd = ["pytest", str(abs_path), "--cov", "--cov-branch", "--cov-report=json", "-v"]
+        cmd = [
+            "pytest",
+            str(abs_path),
+            "--cov",
+            "--cov-branch",
+            "--cov-report=json",
+            "-v",
+        ]
 
         try:
             # Run pytest and capture output
@@ -109,6 +116,15 @@ class TestRunner:
         This is more reliable than regex parsing as it directly accesses the structured
         coverage data.
 
+        C0 (Statement Coverage): Percentage of executed statements
+        C1 (Branch Coverage): Percentage of executed branches
+
+        Branch coverage calculation:
+        - Each branch point (if/while/for) has 2 paths: True and False
+        - covered_branches: branches where both paths were executed
+        - num_partial_branches: branches where only one path was executed
+        - A branch is "fully covered" only if both paths are executed
+
         Returns:
             Tuple of (c0_coverage, c1_coverage) as percentages
         """
@@ -135,14 +151,24 @@ class TestRunner:
                     # Calculate from raw branch data if available
                     num_branches = totals.get("num_branches", 0)
                     if num_branches > 0:
+                        # In coverage.py:
+                        # - covered_branches = branches with both paths executed
+                        # - num_partial_branches = branches with only one path executed
+                        # Branch coverage = (fully covered branches / total branches) * 100
                         covered_branches = totals.get("covered_branches", 0)
+                        num_partial = totals.get("num_partial_branches", 0)
+
+                        # C1 = (fully covered branches / total branches) * 100
+                        # Note: We only count fully covered branches (both paths executed)
                         c1_coverage = (covered_branches / num_branches) * 100.0
                     else:
-                        # No branches means C1 should equal C0 (logical constraint)
-                        c1_coverage = c0_coverage
+                        # No branches means 100% branch coverage (all 0 branches are covered)
+                        c1_coverage = 100.0
 
-                # Ensure C1 never exceeds C0 (branch coverage <= statement coverage)
-                c1_coverage = min(c1_coverage, c0_coverage)
+                # Note: C1 and C0 are independent metrics
+                # C1 can be > C0 in some cases (e.g., all branches covered but some statements not executed)
+                # C1 can be < C0 in other cases (e.g., all statements executed but some branches not covered)
+                # Therefore, we do NOT enforce C1 <= C0 constraint
 
         except (json.JSONDecodeError, IOError):
             # Fallback to 0.0 if JSON parsing fails
