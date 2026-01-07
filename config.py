@@ -7,6 +7,10 @@ including constants, default values, and path management.
 
 from pathlib import Path
 from typing import Final
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ===== Project Paths =====
 PROJECT_ROOT: Final[Path] = Path(__file__).parent
