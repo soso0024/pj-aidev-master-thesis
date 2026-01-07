@@ -2,7 +2,7 @@
   "models": {
     "claude-sonnet-4-5": {
       "api_name": "claude-sonnet-4-5-20250929",
-      "folder_name": "claude-4-5-sonnet",
+      "folder_name": "claude-sonnet-4-5",
       "provider": "anthropic",
       "pricing": {
         "input_per_1M": 3.0,
@@ -11,7 +11,7 @@
     },
     "claude-haiku-4-5": {
       "api_name": "claude-haiku-4-5-20251001",
-      "folder_name": "claude-4-5-haiku",
+      "folder_name": "claude-haiku-4-5",
       "provider": "anthropic",
       "pricing": {
         "input_per_1M": 1.0,
