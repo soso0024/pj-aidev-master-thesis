@@ -27,7 +27,7 @@ class DataLoader:
         self.data = []
         self.classifier = ProblemClassifier(dataset_path)
         # Define the desired order for configuration types
-        self.config_order = ["basic", "ast", "docstring", "docstring_ast", "ast-fix"]
+        self.config_order = ["basic", "ast", "docstring", "docstring_ast"]
 
     def extract_model_from_path(self, file_path: Path) -> str:
         """Extract model information from the file path.
@@ -82,23 +82,15 @@ class DataLoader:
                 break
 
         # Check for configuration flags
-        # Note: "ast-fix" is a separate option that should not be conflated with
-        # the "ast" prompt-inclusion flag. Detect it first, then detect "_ast"
-        # on a version of the name with "_ast-fix" removed.
         has_docstring = "_docstring" in base_name
-        has_ast_fix = "_ast-fix" in base_name
-        base_name_without_ast_fix = base_name.replace("_ast-fix", "")
-        has_ast = "_ast" in base_name_without_ast_fix
+        has_ast = "_ast" in base_name
 
         # Check success status
         is_success = base_name.endswith("_success")
         is_false = base_name.endswith("_false")
 
         # Determine configuration type
-        if has_ast_fix:
-            # Treat ast-fix as its own configuration bucket
-            config_type = "ast-fix"
-        elif has_docstring and has_ast:
+        if has_docstring and has_ast:
             config_type = "docstring_ast"
         elif has_docstring:
             config_type = "docstring"
@@ -111,7 +103,6 @@ class DataLoader:
             "problem_id": problem_id,
             "has_docstring": has_docstring,
             "has_ast": has_ast,
-            "has_ast_fix": has_ast_fix,
             "config_type": config_type,
             "success": is_success,
             "filename": filename,

@@ -26,12 +26,6 @@ HUMANEVAL_YAML: Final[Path] = DATASET_DIR / "HumanEval_formatted.yaml"
 MODELS_CONFIG_FILE: Final[Path] = PROJECT_ROOT / "models_config.json"
 
 # ===== Test Generation Constants =====
-# AST-related constants
-MAX_AST_NODES: Final[int] = 20  # Maximum number of AST nodes to include in snippet
-MAX_AST_OUTPUT_NODES: Final[int] = 15  # Maximum nodes to output in final result
-AST_SCORE_ERROR_MATCH: Final[int] = 10  # Score for nodes matching error patterns
-AST_SCORE_LINE_OVERLAP: Final[int] = 5  # Score for nodes overlapping with error lines
-AST_SCORE_COMMON_ERROR: Final[int] = 2  # Score for common error-prone operations
 
 # Pytest execution constants
 PYTEST_TIMEOUT_SECONDS: Final[int] = 60  # Timeout for pytest execution
@@ -138,5 +132,3 @@ def ensure_directories_exist() -> None:
 
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
-
-

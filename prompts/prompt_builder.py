@@ -17,10 +17,10 @@ class PromptBuilder:
 
     # Template file mapping based on configuration flags
     TEMPLATE_MAPPING = {
-        (False, False): "basic.txt",       # No docstring, no AST
-        (True, False): "docstring.txt",    # With docstring, no AST
-        (False, True): "ast.txt",          # No docstring, with AST
-        (True, True): "docstring_ast.txt", # With docstring, with AST
+        (False, False): "basic.txt",  # No docstring, no AST
+        (True, False): "docstring.txt",  # With docstring, no AST
+        (False, True): "ast.txt",  # No docstring, with AST
+        (True, True): "docstring_ast.txt",  # With docstring, with AST
     }
 
     def __init__(self, prompts_dir: str = None):
@@ -239,7 +239,6 @@ class PromptBuilder:
         max_attempts: int,
         include_docstring: bool = False,
         include_ast: bool = False,
-        ast_snippet: Optional[str] = None,
     ) -> str:
         """
         Build a prompt for fixing test case errors.
@@ -252,7 +251,6 @@ class PromptBuilder:
             max_attempts: Maximum number of fix attempts
             include_docstring: Whether to include function docstring
             include_ast: Whether to include full AST
-            ast_snippet: Optional focused AST snippet for error context
 
         Returns:
             Fix prompt string ready for LLM
@@ -277,9 +275,9 @@ class PromptBuilder:
                 problem["prompt"],
                 problem["entry_point"],
             )
-            ast_section = f"\n\nAST representation of canonical solution:\n```\n{ast_repr}\n```\n"
-        elif ast_snippet:
-            ast_section = f"\n\nRELEVANT AST SNIPPET OF FUNCTION (focus on error):\n```\n{ast_snippet}\n```\n"
+            ast_section = (
+                f"\n\nAST representation of canonical solution:\n```\n{ast_repr}\n```\n"
+            )
 
         fix_attempt_line = f"This is fix attempt {attempt} of {max_attempts}."
 
@@ -335,4 +333,3 @@ Corrected code:"""
         template_name = self.get_template_name(include_docstring, include_ast)
         template_content = self.load_template(template_name)
         return hashlib.sha256(template_content.encode()).hexdigest()[:16]
-

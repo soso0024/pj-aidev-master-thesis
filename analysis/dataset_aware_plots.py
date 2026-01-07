@@ -173,7 +173,6 @@ class DatasetAwarePlots:
                 "ast": "#ff7f0e",
                 "docstring": "#2ca02c",
                 "docstring_ast": "#d62728",
-                "ast-fix": "#9467bd",
             }
 
             # Calculate average cost and coverage by configuration
@@ -315,7 +314,6 @@ class DatasetAwarePlots:
                 "ast": "#ff7f0e",
                 "docstring": "#2ca02c",
                 "docstring_ast": "#d62728",
-                "ast-fix": "#9467bd",
             }
 
             for idx, model in enumerate(models):
@@ -462,7 +460,7 @@ class DatasetAwarePlots:
 
     def _plot_efficiency_metrics_comparison(self, output_path: Path) -> None:
         """Plot comparison of efficiency metrics (CCE-C0, CCE-C1, SCCE).
-        
+
         Metrics:
         - CCE-C0: C0 Coverage / (Cost × 1000) - Statement coverage efficiency
         - CCE-C1: C1 Coverage / (Cost × 1000) - Branch coverage efficiency
@@ -529,8 +527,12 @@ class DatasetAwarePlots:
 
             if agg_stats.empty:
                 ax.text(
-                    0.5, 0.5, f"No data for {model}",
-                    ha="center", va="center", transform=ax.transAxes
+                    0.5,
+                    0.5,
+                    f"No data for {model}",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
                 )
                 continue
 
