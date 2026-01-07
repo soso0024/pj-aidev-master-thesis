@@ -9,81 +9,36 @@
         "output_per_1k": 0.015
       }
     },
-    "claude-haiku-4-5": {
-      "api_name": "claude-haiku-4-5-20251001",
-      "folder_name": "claude-haiku-4-5",
-      "provider": "anthropic",
-      "pricing": {
-        "input_per_1k": 0.001,
-        "output_per_1k": 0.005
-      }
-    },
-    "claude-opus-4-1": {
-      "api_name": "claude-opus-4-1-20250805",
-      "folder_name": "claude-opus-4-1",
+    "claude-opus-4-5": {
+      "api_name": "claude-opus-4-5-20260101",
+      "folder_name": "claude-opus-4-5",
       "provider": "anthropic",
       "pricing": {
         "input_per_1k": 0.015,
         "output_per_1k": 0.075
       }
     },
-    "claude-sonnet-4": {
-      "api_name": "claude-sonnet-4-20250514",
-      "folder_name": "claude-4-sonnet",
-      "provider": "anthropic",
+    "gpt-5.2": {
+      "api_name": "gpt-5.2",
+      "folder_name": "gpt-5-2",
+      "provider": "openai",
       "pricing": {
-        "input_per_1k": 0.003,
-        "output_per_1k": 0.015
+        "input_per_1k": 0.0025,
+        "output_per_1k": 0.01
       }
     },
-    "claude-3-5-haiku": {
-      "api_name": "claude-3-5-haiku-20241022",
-      "folder_name": "claude-3-5-haiku",
-      "provider": "anthropic",
+    "gpt-5.1": {
+      "api_name": "gpt-5.1",
+      "folder_name": "gpt-5-1",
+      "provider": "openai",
       "pricing": {
-        "input_per_1k": 0.00025,
-        "output_per_1k": 0.00125
+        "input_per_1k": 0.002,
+        "output_per_1k": 0.008
       }
     },
-    "claude-3-haiku": {
-      "api_name": "claude-3-haiku-20240307",
-      "folder_name": "claude-3-haiku",
-      "provider": "anthropic",
-      "pricing": {
-        "input_per_1k": 0.00025,
-        "output_per_1k": 0.00125
-      }
-    },
-    "gemini-1.5-pro": {
-      "api_name": "gemini-1.5-pro",
-      "folder_name": "gemini-1-5-pro",
-      "provider": "gemini",
-      "pricing": {
-        "input_per_1k": 0.00125,
-        "output_per_1k": 0.005
-      }
-    },
-    "gemini-1.5-flash": {
-      "api_name": "gemini-1.5-flash",
-      "folder_name": "gemini-1-5-flash",
-      "provider": "gemini",
-      "pricing": {
-        "input_per_1k": 0.000075,
-        "output_per_1k": 0.0003
-      }
-    },
-    "gemini-2.0-flash-exp": {
-      "api_name": "gemini-2.0-flash-exp",
-      "folder_name": "gemini-2-0-flash-exp",
-      "provider": "gemini",
-      "pricing": {
-        "input_per_1k": 0.0,
-        "output_per_1k": 0.0
-      }
-    },
-    "gemini-2.5-flash-lite": {
-      "api_name": "gemini-2.5-flash-lite",
-      "folder_name": "gemini-2-5-flash-lite",
+    "gemini-3-pro": {
+      "api_name": "gemini-3-pro",
+      "folder_name": "gemini-3-pro",
       "provider": "gemini",
       "pricing": {
         "input_per_1k": 0.0,
@@ -98,34 +53,7 @@
         "input_per_1k": 0.0,
         "output_per_1k": 0.0
       }
-    },
-    "gemini-2.5-pro": {
-      "api_name": "gemini-2.5-pro",
-      "folder_name": "gemini-2-5-pro",
-      "provider": "gemini",
-      "pricing": {
-        "input_per_1k": 0.0,
-        "output_per_1k": 0.0
-      }
-    },
-    "gemini-3-flash-preview": {
-      "api_name": "gemini-3-flash-preview",
-      "folder_name": "gemini-3-flash-preview",
-      "provider": "gemini",
-      "pricing": {
-        "input_per_1k": 0.0,
-        "output_per_1k": 0.0
-      }
-    },
-    "gpt-4.1": {
-      "api_name": "gpt-4.1",
-      "folder_name": "gpt-4-1",
-      "provider": "openai",
-      "pricing": {
-        "input_per_1k": 0.002,
-        "output_per_1k": 0.008
-      }
     }
   },
-  "default_model": "gemini-2.5-flash-lite"
+  "default_model": "gemini-2.5-flash"
 }
