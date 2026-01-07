@@ -68,16 +68,30 @@ class OpenAIClient(LLMClient):
         self._check_availability()
         
         try:
-            response = self._client.chat.completions.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=self.DEFAULT_TOP_P,
-                frequency_penalty=self.DEFAULT_FREQUENCY_PENALTY,
-                presence_penalty=self.DEFAULT_PRESENCE_PENALTY,
-                seed=self.DEFAULT_SEED,
-                messages=[{"role": "user", "content": prompt}],
+            # GPT-5+ models use max_completion_tokens instead of max_tokens
+            # Determine which parameter to use based on model name
+            uses_max_completion_tokens = any(
+                model.startswith(prefix) for prefix in ['gpt-5', 'o1', 'o3']
             )
+            
+            # Build the API call parameters
+            api_params = {
+                "model": model,
+                "temperature": temperature,
+                "top_p": self.DEFAULT_TOP_P,
+                "frequency_penalty": self.DEFAULT_FREQUENCY_PENALTY,
+                "presence_penalty": self.DEFAULT_PRESENCE_PENALTY,
+                "seed": self.DEFAULT_SEED,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            
+            # Add the appropriate max tokens parameter
+            if uses_max_completion_tokens:
+                api_params["max_completion_tokens"] = max_tokens
+            else:
+                api_params["max_tokens"] = max_tokens
+            
+            response = self._client.chat.completions.create(**api_params)
             
             return LLMResponse(
                 content=response.choices[0].message.content,
