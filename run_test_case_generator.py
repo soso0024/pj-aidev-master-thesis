@@ -366,11 +366,11 @@ class TestCaseGenerator:
         stem = original_path.stem
 
         # Remove any existing success/failure suffix
-        if stem.endswith("_success") or stem.endswith("_false"):
+        if stem.endswith("_success") or stem.endswith("_failed"):
             stem = "_".join(stem.split("_")[:-1])
 
         # Add the new suffix based on evaluation result
-        suffix = "success" if evaluation_success else "false"
+        suffix = "success" if evaluation_success else "failed"
         new_stem = f"{stem}_{suffix}"
 
         # Create new filepath
@@ -448,9 +448,11 @@ class TestCaseGenerator:
                     "buggy_failure_type": failure_type,
                     "is_true_positive": true_bug_detection
                     and failure_type == "assertion",
-                    "is_false_positive": canonical_passed
-                    and not buggy_failed is False
-                    and failure_type not in ["assertion", "none", None],
+                    "is_false_positive": (
+                        canonical_passed
+                        and buggy_failed is not False
+                        and failure_type not in ["assertion", "none", None]
+                    ),
                 }
             )
 
@@ -573,7 +575,8 @@ class TestCaseGenerator:
             print(response)
         else:
             print("\n".join(lines[:TRUNCATE_HEAD_LINES]))
-            print(f"\n... ({len(lines) - DISPLAY_LINE_LIMIT} lines omitted) ...\n")
+            omitted_lines = len(lines) - (TRUNCATE_HEAD_LINES + TRUNCATE_TAIL_LINES)
+            print(f"\n... ({omitted_lines} lines omitted) ...\n")
             print("\n".join(lines[-TRUNCATE_TAIL_LINES:]))
 
         print(f"{'='*80}")
@@ -907,8 +910,7 @@ class TestCaseGenerator:
                     f"✅ Fix attempt {attempt} completed - Will retry pytest on next attempt"
                 )
                 print(f"{'─'*80}")
-                print()  # Extra blank line for better readability
-                print()  # Extra blank line for better readability
+                print("\n")  # Extra blank lines for better readability
             else:
                 total_fix_attempts = max(0, self.get_total_fix_attempts())
                 print(f"\n{'='*80}")
@@ -1241,7 +1243,8 @@ def main():
         print("Error: models_config.json contains invalid JSON.")
         return 1
 
-    selected_models = args.models if args.models else [models_config["default_model"]]
+    # args.models already has default value, so it's never None
+    selected_models = args.models
 
     # Check if any selected model requires Anthropic API
     needs_anthropic = any(
