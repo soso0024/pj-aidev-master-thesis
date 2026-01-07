@@ -9,7 +9,7 @@
         "output_per_1M": 15.0
       }
     },
-    "claude-4-5-haiku": {
+    "claude-haiku-4-5": {
       "api_name": "claude-haiku-4-5-20251001",
       "folder_name": "claude-4-5-haiku",
       "provider": "anthropic",
