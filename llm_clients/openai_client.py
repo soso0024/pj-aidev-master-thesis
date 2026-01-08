@@ -74,16 +74,26 @@ class OpenAIClient(LLMClient):
                 model.startswith(prefix) for prefix in ["gpt-5", "o1", "o3"]
             )
 
+            # Some models (gpt-5-nano, gpt-5-mini) only support default temperature
+            # and don't accept temperature=0.0
+            models_with_default_temp_only = ["gpt-5-nano", "gpt-5-mini"]
+            use_default_temp_only = any(
+                model_name in model for model_name in models_with_default_temp_only
+            )
+
             # Build the API call parameters
             api_params = {
                 "model": model,
-                "temperature": temperature,
                 "top_p": self.DEFAULT_TOP_P,
                 "frequency_penalty": self.DEFAULT_FREQUENCY_PENALTY,
                 "presence_penalty": self.DEFAULT_PRESENCE_PENALTY,
                 "seed": self.DEFAULT_SEED,
                 "messages": [{"role": "user", "content": prompt}],
             }
+
+            # Only add temperature if the model supports custom values
+            if not use_default_temp_only:
+                api_params["temperature"] = temperature
 
             # Add the appropriate max tokens parameter
             if uses_max_completion_tokens:
