@@ -53,6 +53,15 @@
         "input_per_1M": 0.0,
         "output_per_1M": 0.0
       }
+    },
+    "gemini-3-pro-preview": {
+      "api_name": "gemini-3-pro-preview",
+      "folder_name": "gemini-3-pro-preview",
+      "provider": "gemini",
+      "pricing": {
+        "input_per_1M": 2.0,
+        "output_per_1M": 12.0
+      }
     }
   },
   "default_model": "gemini-2.5-flash"
