@@ -94,45 +94,82 @@ class TraditionalPlots:
         plt.close()
 
     def _plot_code_coverage(self, output_path: Path) -> None:
-        """Plot code coverage by configuration type."""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        """Plot code coverage by configuration type (C0 and C1 separately)."""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-        # Bar plot of mean coverage
-        coverage_stats = (
+        # C0 Coverage (Statement Coverage)
+        c0_stats = (
             self.df.groupby("config_type_display", observed=False)[
-                "code_coverage_percent"
+                "code_coverage_c0_percent"
             ]
             .agg(["mean", "std", "count"])
             .reset_index()
         )
-        coverage_stats = coverage_stats.sort_values("config_type_display")
-        bars = ax.bar(
-            coverage_stats["config_type_display"],
-            coverage_stats["mean"],
-            yerr=coverage_stats["std"],
+        c0_stats = c0_stats.sort_values("config_type_display")
+        bars_c0 = ax1.bar(
+            c0_stats["config_type_display"],
+            c0_stats["mean"],
+            yerr=c0_stats["std"],
             capsize=5,
+            color='#2E86AB',
+            alpha=0.8,
         )
-        ax.set_title(
-            "Average Code Coverage by Configuration", fontsize=20, fontweight="bold"
+        ax1.set_title(
+            "C0: Statement Coverage by Configuration", fontsize=18, fontweight="bold"
         )
-        ax.set_xlabel("Configuration Type", fontsize=16, fontweight="bold")
-        ax.set_ylabel("Average Code Coverage (%)", fontsize=16, fontweight="bold")
-        ax.tick_params(axis="x", rotation=45, labelsize=12)
-        ax.tick_params(axis="y", labelsize=12)
-        # Code coverage ranges from 0-100%
-        ax.set_ylim(0, 100)
+        ax1.set_xlabel("Configuration Type", fontsize=14, fontweight="bold")
+        ax1.set_ylabel("C0 Statement Coverage (%)", fontsize=14, fontweight="bold")
+        ax1.tick_params(axis="x", rotation=45, labelsize=11)
+        ax1.tick_params(axis="y", labelsize=11)
+        ax1.set_ylim(0, 100)
 
-        # Add value labels
-        for bar, mean, count in zip(
-            bars, coverage_stats["mean"], coverage_stats["count"]
-        ):
-            ax.text(
+        # Add value labels for C0
+        for bar, mean in zip(bars_c0, c0_stats["mean"]):
+            ax1.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + 1,
                 f"{mean:.1f}%",
                 ha="center",
                 va="bottom",
-                fontsize=14,
+                fontsize=12,
+                fontweight="bold",
+            )
+
+        # C1 Coverage (Branch Coverage)
+        c1_stats = (
+            self.df.groupby("config_type_display", observed=False)[
+                "code_coverage_c1_percent"
+            ]
+            .agg(["mean", "std", "count"])
+            .reset_index()
+        )
+        c1_stats = c1_stats.sort_values("config_type_display")
+        bars_c1 = ax2.bar(
+            c1_stats["config_type_display"],
+            c1_stats["mean"],
+            yerr=c1_stats["std"],
+            capsize=5,
+            color='#A23B72',
+            alpha=0.8,
+        )
+        ax2.set_title(
+            "C1: Branch Coverage by Configuration", fontsize=18, fontweight="bold"
+        )
+        ax2.set_xlabel("Configuration Type", fontsize=14, fontweight="bold")
+        ax2.set_ylabel("C1 Branch Coverage (%)", fontsize=14, fontweight="bold")
+        ax2.tick_params(axis="x", rotation=45, labelsize=11)
+        ax2.tick_params(axis="y", labelsize=11)
+        ax2.set_ylim(0, 100)
+
+        # Add value labels for C1
+        for bar, mean in zip(bars_c1, c1_stats["mean"]):
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 1,
+                f"{mean:.1f}%",
+                ha="center",
+                va="bottom",
+                fontsize=12,
                 fontweight="bold",
             )
 
