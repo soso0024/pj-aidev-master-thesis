@@ -67,5 +67,8 @@ remove_duplicates.py
 analysis/backup_run_analysis.py
 
 coverage.json
+.coverage_tmp/
 
 data/
+
+*vizs/
