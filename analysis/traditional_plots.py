@@ -65,7 +65,10 @@ class TraditionalPlots:
         success_rate["success_rate"] = success_rate["mean"] * 100
         success_rate = success_rate.sort_values("config_type_display")
 
-        bars = ax.bar(success_rate["config_type_display"], success_rate["success_rate"])
+        # Use specified colors
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']  # 4th color for potential 4th config
+        bars = ax.bar(success_rate["config_type_display"], success_rate["success_rate"], 
+                     color=colors[:len(success_rate)])
         ax.set_title(
             "Success Rate by Configuration Type", fontsize=20, fontweight="bold"
         )
@@ -74,18 +77,19 @@ class TraditionalPlots:
         ax.tick_params(axis="both", which="major", labelsize=12)
         ax.set_ylim(0, 100)
 
-        # Add value labels on bars
+        # Add value labels on bars with white background
         for bar, rate, count in zip(
             bars, success_rate["success_rate"], success_rate["count"]
         ):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 1,
+                bar.get_height() / 2,
                 f"{rate:.1f}%",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=14,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         plt.xticks(rotation=45)
@@ -106,10 +110,11 @@ class TraditionalPlots:
             .reset_index()
         )
         c0_stats = c0_stats.sort_values("config_type_display")
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']
         bars_c0 = ax1.bar(
             c0_stats["config_type_display"],
             c0_stats["mean"],
-            color='#2E86AB',
+            color=colors[:len(c0_stats)],
             alpha=0.8,
         )
         ax1.set_title(
@@ -121,16 +126,17 @@ class TraditionalPlots:
         ax1.tick_params(axis="y", labelsize=11)
         ax1.set_ylim(0, 100)
 
-        # Add value labels for C0
+        # Add value labels for C0 with white background
         for bar, mean in zip(bars_c0, c0_stats["mean"]):
             ax1.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 1,
+                bar.get_height() / 2,
                 f"{mean:.1f}%",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=12,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         # C1 Coverage (Branch Coverage)
@@ -142,10 +148,11 @@ class TraditionalPlots:
             .reset_index()
         )
         c1_stats = c1_stats.sort_values("config_type_display")
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']
         bars_c1 = ax2.bar(
             c1_stats["config_type_display"],
             c1_stats["mean"],
-            color='#A23B72',
+            color=colors[:len(c1_stats)],
             alpha=0.8,
         )
         ax2.set_title(
@@ -157,16 +164,17 @@ class TraditionalPlots:
         ax2.tick_params(axis="y", labelsize=11)
         ax2.set_ylim(0, 100)
 
-        # Add value labels for C1
+        # Add value labels for C1 with white background
         for bar, mean in zip(bars_c1, c1_stats["mean"]):
             ax2.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 1,
+                bar.get_height() / 2,
                 f"{mean:.1f}%",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=12,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         plt.tight_layout()
@@ -184,9 +192,11 @@ class TraditionalPlots:
             .reset_index()
         )
         cost_stats = cost_stats.sort_values("config_type_display")
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']
         bars = ax.bar(
             cost_stats["config_type_display"],
             cost_stats["mean"],
+            color=colors[:len(cost_stats)],
         )
         ax.set_title(
             "Average Total Cost by Configuration", fontsize=20, fontweight="bold"
@@ -198,16 +208,17 @@ class TraditionalPlots:
         # Cost cannot be negative - set y-axis to start from 0
         ax.set_ylim(bottom=0)
 
-        # Add value labels
+        # Add value labels with white background
         for bar, mean, count in zip(bars, cost_stats["mean"], cost_stats["count"]):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.001,
+                bar.get_height() / 2,
                 f"${mean:.4f}",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=14,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         plt.tight_layout()
@@ -225,9 +236,11 @@ class TraditionalPlots:
             .reset_index()
         )
         fix_stats = fix_stats.sort_values("config_type_display")
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']
         bars = ax.bar(
             fix_stats["config_type_display"],
             fix_stats["mean"],
+            color=colors[:len(fix_stats)],
         )
         ax.set_title(
             "Average Fix Attempts by Configuration", fontsize=20, fontweight="bold"
@@ -239,16 +252,17 @@ class TraditionalPlots:
         # Fix attempts cannot be negative - set y-axis to start from 0
         ax.set_ylim(bottom=0)
 
-        # Add value labels
+        # Add value labels with white background
         for bar, mean, count in zip(bars, fix_stats["mean"], fix_stats["count"]):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.05,
+                bar.get_height() / 2,
                 f"{mean:.2f}",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=14,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         plt.tight_layout()
@@ -266,9 +280,11 @@ class TraditionalPlots:
             .reset_index()
         )
         token_stats = token_stats.sort_values("config_type_display")
+        colors = ['#FF4B00', '#005AFF', '#03AF7A', '#FFA500']
         bars = ax.bar(
             token_stats["config_type_display"],
             token_stats["mean"],
+            color=colors[:len(token_stats)],
         )
         ax.set_title(
             "Average Input Tokens by Configuration", fontsize=20, fontweight="bold"
@@ -280,16 +296,17 @@ class TraditionalPlots:
         # Set y-axis to start at 0 for consistency
         ax.set_ylim(bottom=0)
 
-        # Add value labels
+        # Add value labels with white background
         for bar, mean, count in zip(bars, token_stats["mean"], token_stats["count"]):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 50,
+                bar.get_height() / 2,
                 f"{mean:.0f}",
                 ha="center",
-                va="bottom",
+                va="center",
                 fontsize=14,
                 fontweight="bold",
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='none', alpha=0.8)
             )
 
         plt.tight_layout()
