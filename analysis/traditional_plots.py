@@ -109,8 +109,6 @@ class TraditionalPlots:
         bars_c0 = ax1.bar(
             c0_stats["config_type_display"],
             c0_stats["mean"],
-            yerr=c0_stats["std"],
-            capsize=5,
             color='#2E86AB',
             alpha=0.8,
         )
@@ -147,8 +145,6 @@ class TraditionalPlots:
         bars_c1 = ax2.bar(
             c1_stats["config_type_display"],
             c1_stats["mean"],
-            yerr=c1_stats["std"],
-            capsize=5,
             color='#A23B72',
             alpha=0.8,
         )
@@ -191,8 +187,6 @@ class TraditionalPlots:
         bars = ax.bar(
             cost_stats["config_type_display"],
             cost_stats["mean"],
-            yerr=cost_stats["std"],
-            capsize=5,
         )
         ax.set_title(
             "Average Total Cost by Configuration", fontsize=20, fontweight="bold"
@@ -234,8 +228,6 @@ class TraditionalPlots:
         bars = ax.bar(
             fix_stats["config_type_display"],
             fix_stats["mean"],
-            yerr=fix_stats["std"],
-            capsize=5,
         )
         ax.set_title(
             "Average Fix Attempts by Configuration", fontsize=20, fontweight="bold"
@@ -277,8 +269,6 @@ class TraditionalPlots:
         bars = ax.bar(
             token_stats["config_type_display"],
             token_stats["mean"],
-            yerr=token_stats["std"],
-            capsize=5,
         )
         ax.set_title(
             "Average Input Tokens by Configuration", fontsize=20, fontweight="bold"
