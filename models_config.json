@@ -19,7 +19,7 @@
       }
     },
     "claude-opus-4-5": {
-      "api_name": "claude-opus-4-5-20260101",
+      "api_name": "claude-opus-4-5-20251101",
       "folder_name": "claude-opus-4-5",
       "provider": "anthropic",
       "pricing": {
