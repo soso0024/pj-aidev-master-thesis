@@ -110,7 +110,7 @@ class CrossModelPlots:
         plt.rcParams["grid.linewidth"] = 0.5
         plt.rcParams["font.family"] = "sans-serif"
         plt.rcParams["font.size"] = 10
-        
+
         # Set Japanese font for all plots
         plt.rcParams["font.sans-serif"] = [
             "Hiragino Sans",
