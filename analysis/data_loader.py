@@ -173,10 +173,35 @@ class DataLoader:
 
                 # Combine filename info with stats data and model info
                 combined_data = {**file_config, **stats_data, "model": model_name}
+                
+                # Normalize field names for compatibility
+                # Map total_cost_usd to total_cost
+                if "total_cost_usd" in combined_data and "total_cost" not in combined_data:
+                    combined_data["total_cost"] = combined_data["total_cost_usd"]
+                elif "total_cost" not in combined_data:
+                    combined_data["total_cost"] = 0.0
+                
+                # Map fix_attempts_used to fix_attempts
+                if "fix_attempts_used" in combined_data and "fix_attempts" not in combined_data:
+                    combined_data["fix_attempts"] = combined_data["fix_attempts_used"]
+                elif "fix_attempts" not in combined_data:
+                    combined_data["fix_attempts"] = 0
+                
+                # Map code_coverage_c0_percent to coverage_percentage (for backward compatibility)
+                if "code_coverage_c0_percent" in combined_data and "coverage_percentage" not in combined_data:
+                    combined_data["coverage_percentage"] = combined_data["code_coverage_c0_percent"]
+                elif "coverage_percentage" not in combined_data:
+                    combined_data["coverage_percentage"] = 0.0
 
                 # Handle missing code_coverage_percent field
                 if "code_coverage_percent" not in combined_data:
-                    combined_data["code_coverage_percent"] = 0.0
+                    combined_data["code_coverage_percent"] = combined_data.get("coverage_percentage", 0.0)
+                
+                # Map evaluation_success to test_passed (for backward compatibility)
+                if "evaluation_success" in combined_data and "test_passed" not in combined_data:
+                    combined_data["test_passed"] = combined_data["evaluation_success"]
+                elif "test_passed" not in combined_data:
+                    combined_data["test_passed"] = False
 
                 # Handle C0/C1 coverage fields
                 # C0 (Statement Coverage) - fallback to code_coverage_percent if not available
