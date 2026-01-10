@@ -651,14 +651,9 @@ class CrossModelPlots:
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("Average Fix Attempts", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "Fix Attempts Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均修正回数", fontweight="bold", fontsize=16)
+        # Title removed as per user request
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
