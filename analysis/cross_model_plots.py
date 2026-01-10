@@ -298,8 +298,10 @@ class CrossModelPlots:
         plt.close()
 
     def plot_cost_comparison(self, output_dir: Path) -> None:
-        """Plot cost comparison across models."""
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+        """Plot cost comparison across models (split into two separate files)."""
+
+        # ==================== Plot 1: Average cost per model ====================
+        fig, ax = plt.subplots(figsize=(14, 8))
 
         # Average cost per problem
         model_avg_costs = {}
@@ -308,8 +310,7 @@ class CrossModelPlots:
             costs = [d.get("total_cost", 0) for d in data if d.get("total_cost", 0) > 0]
             model_avg_costs[model_name] = np.mean(costs) if costs else 0
 
-        # Plot 1: Average cost per model
-        bars1 = ax1.bar(
+        bars = ax.bar(
             range(len(self.model_names)),
             [model_avg_costs[m] for m in self.model_names],
             color=self.colors,
@@ -317,26 +318,24 @@ class CrossModelPlots:
             edgecolor="#333333",
             linewidth=1.2,
         )
-        ax1.set_xlabel("Model", fontweight="bold", fontsize=14)
-        ax1.set_ylabel("Average Cost ($)", fontweight="bold", fontsize=14)
-        ax1.set_title(
-            "Average Cost per Problem by Model", fontweight="bold", fontsize=15
-        )
-        ax1.set_xticks(range(len(self.model_names)))
-        ax1.set_xticklabels(
+        ax.set_xlabel("モデル", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均コスト（$）", fontweight="bold", fontsize=16)
+        # Title removed as per user request
+        ax.set_xticks(range(len(self.model_names)))
+        ax.set_xticklabels(
             [self._clean_model_name(m) for m in self.model_names],
             rotation=45,
             ha="right",
-            fontsize=12,
+            fontsize=14,
         )
-        ax1.tick_params(axis="y", labelsize=12)
-        ax1.grid(True, alpha=0.3, axis="y", linewidth=0.8)
+        ax.tick_params(axis="y", labelsize=14)
+        ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
 
         # Add value labels
-        for bar, model in zip(bars1, self.model_names):
+        for bar, model in zip(bars, self.model_names):
             height = bar.get_height()
             if height > 0:
-                ax1.text(
+                ax.text(
                     bar.get_x() + bar.get_width() / 2.0,
                     height,
                     f"${height:.4f}",
@@ -346,7 +345,17 @@ class CrossModelPlots:
                     fontweight="bold",
                 )
 
-        # Plot 2: Cost by configuration
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / "cross_model_2a_cost_by_model.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        # ==================== Plot 2: Cost by configuration ====================
+        fig, ax = plt.subplots(figsize=(14, 8))
+
         x = np.arange(len(self.config_order))
         width = 0.8 / len(self.model_names)
 
@@ -364,7 +373,7 @@ class CrossModelPlots:
                 config_costs.append(np.mean(costs) if costs else 0)
 
             offset = (i - len(self.model_names) / 2 + 0.5) * width
-            ax2.bar(
+            bars = ax.bar(
                 x + offset,
                 config_costs,
                 width,
@@ -375,24 +384,38 @@ class CrossModelPlots:
                 linewidth=1.2,
             )
 
-        ax2.set_xlabel("Configuration", fontweight="bold", fontsize=14)
-        ax2.set_ylabel("Average Cost ($)", fontweight="bold", fontsize=14)
-        ax2.set_title("Average Cost by Configuration", fontweight="bold", fontsize=15)
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(
+            # Add value labels on bars (2 decimal places, no $ sign)
+            for bar, cost in zip(bars, config_costs):
+                height = bar.get_height()
+                if height > 0:
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2.0,
+                        height,
+                        f"{cost:.2f}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=10,
+                        fontweight="bold",
+                    )
+
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均コスト（$）", fontweight="bold", fontsize=16)
+        # Title removed as per user request
+        ax.set_xticks(x)
+        ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
-            fontsize=12,
+            fontsize=14,
         )
-        ax2.tick_params(axis="y", labelsize=12)
+        ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
-        ax2.legend(
-            loc="center left", bbox_to_anchor=(1, 0.5), framealpha=0.95, fontsize=11
+        ax.legend(
+            loc="center left", bbox_to_anchor=(1, 0.5), framealpha=0.95, fontsize=13
         )
-        ax2.grid(True, alpha=0.3, axis="y", linewidth=0.8)
+        ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
 
         plt.tight_layout()
         plt.savefig(
-            output_dir / "cross_model_2_cost_comparison.png",
+            output_dir / "cross_model_2b_cost_by_config.png",
             dpi=300,
             bbox_inches="tight",
         )
@@ -719,14 +742,15 @@ class CrossModelPlots:
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("Average Input Tokens", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "Input Token Usage Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均インプットトークン数", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        # ax.set_title(
+        #     "Input Token Usage Comparison Across Models",
+        #     fontweight="bold",
+        #     fontsize=18,
+        #     pad=20,
+        # )
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
