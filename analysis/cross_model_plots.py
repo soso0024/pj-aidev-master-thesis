@@ -55,6 +55,14 @@ class CrossModelPlots:
             "docstring_ast": "#A6E2FF",  # Light cyan
         }
 
+        # Configuration display name mapping (Japanese)
+        self.config_display_names = {
+            "basic": "基本プロンプト",
+            "ast": "基本 + AST",
+            "docstring": "基本 + Docstring",
+            "docstring_ast": "基本 + Docstring + AST",
+        }
+
     def _detect_humanevalpack_data(self) -> bool:
         """Detect if the data is from HumanEvalPack dataset."""
         for model_data in self.model_data.values():
@@ -102,6 +110,18 @@ class CrossModelPlots:
         plt.rcParams["grid.linewidth"] = 0.5
         plt.rcParams["font.family"] = "sans-serif"
         plt.rcParams["font.size"] = 10
+        
+        # Set Japanese font for all plots
+        plt.rcParams["font.sans-serif"] = [
+            "Hiragino Sans",
+            "Yu Gothic",
+            "Meiryo",
+            "Takao",
+            "IPAexGothic",
+            "IPAPGothic",
+            "VL PGothic",
+            "Noto Sans CJK JP",
+        ] + plt.rcParams["font.sans-serif"]
 
         self.plot_bug_detection_rate_comparison(output_dir)
         self.plot_test_generation_success_rate(output_dir)
@@ -175,7 +195,10 @@ class CrossModelPlots:
         )
         ax.set_title(title, fontweight="bold", fontsize=18, pad=20)
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -198,18 +221,6 @@ class CrossModelPlots:
 
     def plot_test_generation_success_rate(self, output_dir: Path) -> None:
         """Plot test generation success rates (evaluation_success) across all models and configurations."""
-        # Set Japanese font
-        plt.rcParams["font.sans-serif"] = [
-            "Hiragino Sans",
-            "Yu Gothic",
-            "Meiryo",
-            "Takao",
-            "IPAexGothic",
-            "IPAPGothic",
-            "VL PGothic",
-            "Noto Sans CJK JP",
-        ]
-
         fig, ax = plt.subplots(figsize=(14, 8))
 
         x = np.arange(len(self.config_order))
@@ -262,7 +273,10 @@ class CrossModelPlots:
         # タイトルを削除
         # ax.set_title("Test Generation Success Rate Comparison Across Models", fontweight="bold", fontsize=18, pad=20)
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -365,7 +379,10 @@ class CrossModelPlots:
         ax2.set_ylabel("Average Cost ($)", fontweight="bold", fontsize=14)
         ax2.set_title("Average Cost by Configuration", fontweight="bold", fontsize=15)
         ax2.set_xticks(x)
-        ax2.set_xticklabels(self.config_order, fontsize=12)
+        ax2.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=12,
+        )
         ax2.tick_params(axis="y", labelsize=12)
         # Place legend outside the plot area (right side)
         ax2.legend(
@@ -434,7 +451,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -501,7 +521,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -637,7 +660,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -707,7 +733,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -772,7 +801,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
@@ -839,7 +871,10 @@ class CrossModelPlots:
             pad=20,
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(self.config_order, fontsize=14)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
         ax.tick_params(axis="y", labelsize=14)
         # Place legend outside the plot area (right side)
         ax.legend(
