@@ -133,6 +133,7 @@ class CrossModelPlots:
         self.plot_cost_efficiency_scatter(output_dir)
         self.plot_model_config_heatmap(output_dir)
         self.plot_overall_rankings(output_dir)
+        self.plot_scce_comparison(output_dir)
 
         print("✅ Cross-model comparison plots created")
 
@@ -1230,5 +1231,163 @@ class CrossModelPlots:
         plt.tight_layout()
         plt.savefig(
             output_dir / "cross_model_9_rankings.png", dpi=300, bbox_inches="tight"
+        )
+        plt.close()
+
+    def plot_scce_comparison(self, output_dir: Path) -> None:
+        """
+        Plot SCCE (Success-weighted Coverage Cost Efficiency) comparison.
+
+        SCCE = Success × (0.3×C0 + 0.7×C1) / (Cost × 1000)
+
+        This metric combines:
+        - Success rate (bug detection or test pass)
+        - Weighted coverage (C0: statement, C1: branch)
+        - Cost efficiency
+        """
+
+        # ==================== Plot 1: SCCE by Model ====================
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        scce_by_model = {}
+        for model_name in self.model_names:
+            data = self.model_data[model_name]
+            scce_scores = []
+
+            for record in data:
+                # Only calculate SCCE for records with success and cost data
+                if record.get("total_cost", 0) > 0:
+                    success = 1 if self._is_success(record) else 0
+                    c0 = record.get("code_coverage_c0_percent", 0)
+                    c1 = record.get("code_coverage_c1_percent", 0)
+                    cost = record.get("total_cost", 0)
+
+                    # SCCE formula
+                    weighted_coverage = 0.3 * c0 + 0.7 * c1
+                    scce = success * weighted_coverage / (cost * 1000)
+                    scce_scores.append(scce)
+
+            scce_by_model[model_name] = np.mean(scce_scores) if scce_scores else 0
+
+        bars = ax.bar(
+            range(len(self.model_names)),
+            [scce_by_model[m] for m in self.model_names],
+            color=self.colors,
+            alpha=0.85,
+            edgecolor="#333333",
+            linewidth=1.2,
+        )
+        ax.set_xlabel("モデル", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均 SCCE スコア", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        ax.set_xticks(range(len(self.model_names)))
+        ax.set_xticklabels(
+            [self._clean_model_name(m) for m in self.model_names],
+            rotation=45,
+            ha="right",
+            fontsize=14,
+        )
+        ax.tick_params(axis="y", labelsize=14)
+        ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
+
+        # Add value labels
+        for bar, model in zip(bars, self.model_names):
+            height = bar.get_height()
+            if height > 0:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height,
+                    f"{height:.2f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=11,
+                    fontweight="bold",
+                )
+
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / "cross_model_10a_scce_by_model.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        # ==================== Plot 2: SCCE by Configuration ====================
+        fig, ax = plt.subplots(figsize=(18, 8))
+
+        x = np.arange(len(self.config_order))
+        width = 0.8 / len(self.model_names)
+
+        for i, model_name in enumerate(self.model_names):
+            data = self.model_data[model_name]
+            scce_by_config = []
+
+            for config in self.config_order:
+                config_data = [d for d in data if d.get("config_type") == config]
+                scce_scores = []
+
+                for record in config_data:
+                    if record.get("total_cost", 0) > 0:
+                        success = 1 if self._is_success(record) else 0
+                        c0 = record.get("code_coverage_c0_percent", 0)
+                        c1 = record.get("code_coverage_c1_percent", 0)
+                        cost = record.get("total_cost", 0)
+
+                        weighted_coverage = 0.3 * c0 + 0.7 * c1
+                        scce = success * weighted_coverage / (cost * 1000)
+                        scce_scores.append(scce)
+
+                scce_by_config.append(np.mean(scce_scores) if scce_scores else 0)
+
+            offset = (i - len(self.model_names) / 2 + 0.5) * width
+            bars = ax.bar(
+                x + offset,
+                scce_by_config,
+                width,
+                label=self._clean_model_name(model_name),
+                color=self.colors[i],
+                alpha=0.85,
+                edgecolor="#333333",
+                linewidth=1.2,
+            )
+
+            # Add value labels on bars
+            for bar, scce in zip(bars, scce_by_config):
+                height = bar.get_height()
+                if height > 0:
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2.0,
+                        height,
+                        f"{scce:.2f}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=10,
+                        fontweight="bold",
+                    )
+
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("SCCE スコア", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        ax.set_xticks(x)
+        ax.set_xticklabels(
+            [self.config_display_names.get(c, c) for c in self.config_order],
+            fontsize=14,
+        )
+        ax.tick_params(axis="y", labelsize=14)
+        # Place legend outside the plot area (right side, vertical, larger font)
+        ax.legend(
+            loc="center left",
+            bbox_to_anchor=(1, 0.5),
+            framealpha=0.95,
+            fontsize=16,
+            ncol=1,
+        )
+        ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
+
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / "cross_model_10b_scce_by_config.png",
+            dpi=300,
+            bbox_inches="tight",
         )
         plt.close()
