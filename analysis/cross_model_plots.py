@@ -354,10 +354,10 @@ class CrossModelPlots:
         plt.close()
 
         # ==================== Plot 2: Cost by configuration ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         x = np.arange(len(self.config_order))
-        width = 0.8 / len(self.model_names)
+        width = 0.85 / len(self.model_names)
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -384,17 +384,17 @@ class CrossModelPlots:
                 linewidth=1.2,
             )
 
-            # Add value labels on bars (2 decimal places, no $ sign)
+            # Add value labels on bars (3 decimal places, no $ sign)
             for bar, cost in zip(bars, config_costs):
                 height = bar.get_height()
                 if height > 0:
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
                         height,
-                        f"{cost:.2f}",
+                        f"{cost:.3f}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=11,
                         fontweight="bold",
                     )
 
@@ -427,7 +427,7 @@ class CrossModelPlots:
         width = 0.8 / len(self.model_names)
 
         # ==================== Plot C0: Statement Coverage ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -451,40 +451,41 @@ class CrossModelPlots:
                 linewidth=1.2,
             )
 
-            # Add value labels on bars (larger font for paper)
+            # Add value labels on bars (larger font for paper, % removed)
             for bar, rate in zip(bars, c0_rates):
                 height = bar.get_height()
                 if height > 0:
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
                         height + 1.5,
-                        f"{rate:.1f}%",
+                        f"{rate:.1f}",
                         ha="center",
                         va="bottom",
-                        fontsize=11,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("C0 Statement Coverage (%)", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "C0: Statement Coverage Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("C0 文カバレッジ（％）", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        # ax.set_title(
+        #     "C0: Statement Coverage Comparison Across Models",
+        #     fontweight="bold",
+        #     fontsize=18,
+        #     pad=20,
+        # )
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
             fontsize=14,
         )
         ax.tick_params(axis="y", labelsize=14)
-        # Place legend outside the plot area (right side)
+        # Place legend outside the plot area (right side, vertical, larger font)
         ax.legend(
             loc="center left",
             bbox_to_anchor=(1, 0.5),
             framealpha=0.95,
-            fontsize=13,
+            fontsize=16,
             ncol=1,
         )
         ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
@@ -497,7 +498,7 @@ class CrossModelPlots:
         plt.close()
 
         # ==================== Plot C1: Branch Coverage ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -521,40 +522,41 @@ class CrossModelPlots:
                 linewidth=1.2,
             )
 
-            # Add value labels on bars (larger font for paper)
+            # Add value labels on bars (larger font for paper, % removed)
             for bar, rate in zip(bars, c1_rates):
                 height = bar.get_height()
                 if height > 0:
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
                         height + 1.5,
-                        f"{rate:.1f}%",
+                        f"{rate:.1f}",
                         ha="center",
                         va="bottom",
-                        fontsize=11,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("C1 Branch Coverage (%)", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "C1: Branch Coverage Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("C1 分岐カバレッジ（％）", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        # ax.set_title(
+        #     "C1: Branch Coverage Comparison Across Models",
+        #     fontweight="bold",
+        #     fontsize=18,
+        #     pad=20,
+        # )
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
             fontsize=14,
         )
         ax.tick_params(axis="y", labelsize=14)
-        # Place legend outside the plot area (right side)
+        # Place legend outside the plot area (right side, vertical, larger font)
         ax.legend(
             loc="center left",
             bbox_to_anchor=(1, 0.5),
             framealpha=0.95,
-            fontsize=13,
+            fontsize=16,
             ncol=1,
         )
         ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
@@ -698,10 +700,10 @@ class CrossModelPlots:
     def plot_token_usage_comparison(self, output_dir: Path) -> None:
         """Plot token usage comparison across models (input, output, and total tokens as separate files)."""
         x = np.arange(len(self.config_order))
-        width = 0.8 / len(self.model_names)
+        width = 0.85 / len(self.model_names)
 
         # ==================== Plot Input Tokens ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -738,7 +740,7 @@ class CrossModelPlots:
                         f"{int(tokens):,}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
@@ -770,7 +772,7 @@ class CrossModelPlots:
         plt.close()
 
         # ==================== Plot Output Tokens ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -807,18 +809,19 @@ class CrossModelPlots:
                         f"{int(tokens):,}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("Average Output Tokens", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "Output Token Usage Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均アウトプットトークン数", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        # ax.set_title(
+        #     "Output Token Usage Comparison Across Models",
+        #     fontweight="bold",
+        #     fontsize=18,
+        #     pad=20,
+        # )
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
@@ -840,7 +843,7 @@ class CrossModelPlots:
         plt.close()
 
         # ==================== Plot Total Tokens ====================
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         for i, model_name in enumerate(self.model_names):
             data = self.model_data[model_name]
@@ -877,18 +880,19 @@ class CrossModelPlots:
                         f"{int(tokens):,}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
-        ax.set_ylabel("Average Total Tokens", fontweight="bold", fontsize=16)
-        ax.set_title(
-            "Total Token Usage Comparison Across Models",
-            fontweight="bold",
-            fontsize=18,
-            pad=20,
-        )
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
+        ax.set_ylabel("平均トータルトークン数", fontweight="bold", fontsize=16)
+        # タイトルを削除
+        # ax.set_title(
+        #     "Total Token Usage Comparison Across Models",
+        #     fontweight="bold",
+        #     fontsize=18,
+        #     pad=20,
+        # )
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
