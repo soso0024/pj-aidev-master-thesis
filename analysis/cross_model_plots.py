@@ -139,7 +139,7 @@ class CrossModelPlots:
 
     def plot_bug_detection_rate_comparison(self, output_dir: Path) -> None:
         """Plot bug detection rates across all models and configurations."""
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(18, 8))
 
         x = np.arange(len(self.config_order))
         width = 0.8 / len(self.model_names)
@@ -169,44 +169,45 @@ class CrossModelPlots:
                 linewidth=1.2,
             )
 
-            # Add value labels on bars (larger font for paper)
+            # Add value labels on bars (% removed, larger font)
             for bar, rate in zip(bars, success_rates):
                 height = bar.get_height()
                 if height > 0:
                     ax.text(
                         bar.get_x() + bar.get_width() / 2.0,
                         height + 1.5,
-                        f"{rate:.1f}%",
+                        f"{rate:.1f}",
                         ha="center",
                         va="bottom",
-                        fontsize=11,
+                        fontsize=12,
                         fontweight="bold",
                     )
 
-        ax.set_xlabel("Configuration", fontweight="bold", fontsize=16)
+        ax.set_xlabel("プロンプト構成", fontweight="bold", fontsize=16)
         ax.set_ylabel(
-            "Bug Detection Rate (%)" if self.is_humanevalpack else "Success Rate (%)",
+            "バグ検出率（％）" if self.is_humanevalpack else "成功率（％）",
             fontweight="bold",
             fontsize=16,
         )
-        title = (
-            "Bug Detection Rate Comparison Across Models"
-            if self.is_humanevalpack
-            else "Test Success Rate Comparison Across Models"
-        )
-        ax.set_title(title, fontweight="bold", fontsize=18, pad=20)
+        # タイトルを削除
+        # title = (
+        #     "Bug Detection Rate Comparison Across Models"
+        #     if self.is_humanevalpack
+        #     else "Test Success Rate Comparison Across Models"
+        # )
+        # ax.set_title(title, fontweight="bold", fontsize=18, pad=20)
         ax.set_xticks(x)
         ax.set_xticklabels(
             [self.config_display_names.get(c, c) for c in self.config_order],
             fontsize=14,
         )
         ax.tick_params(axis="y", labelsize=14)
-        # Place legend outside the plot area (right side)
+        # Place legend outside the plot area (right side, larger font)
         ax.legend(
             loc="center left",
             bbox_to_anchor=(1, 0.5),
             framealpha=0.95,
-            fontsize=13,
+            fontsize=16,
             ncol=1,
         )
         ax.grid(True, alpha=0.3, axis="y", linewidth=0.8)
