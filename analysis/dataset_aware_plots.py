@@ -75,7 +75,18 @@ class DatasetAwarePlots:
             )
             return
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        # Set Japanese font for matplotlib
+        plt.rcParams["font.sans-serif"] = [
+            "Hiragino Sans",
+            "Yu Gothic",
+            "Meiryo",
+            "Takao",
+            "IPAexGothic",
+            "IPAPGothic",
+        ]
+        plt.rcParams["axes.unicode_minus"] = False
+
+        fig, ax = plt.subplots(figsize=(12, 6))
 
         # Success rate by complexity level
         complexity_order = ["simple", "medium", "complex"]
@@ -100,6 +111,27 @@ class DatasetAwarePlots:
             )
 
             if not pivot_heatmap.empty:
+                # Rename index to English with proper capitalization
+                complexity_display = {
+                    "simple": "Simple",
+                    "medium": "Medium",
+                    "complex": "Complex",
+                }
+                pivot_heatmap.index = pivot_heatmap.index.map(
+                    lambda x: complexity_display.get(x, x.capitalize())
+                )
+
+                # Rename columns to Japanese
+                config_jp = {
+                    "basic": "基本プロンプト",
+                    "ast": "基本 + AST",
+                    "docstring": "基本 + Docstring",
+                    "docstring_ast": "基本 + Docstring + AST",
+                }
+                pivot_heatmap.columns = [
+                    config_jp.get(str(col), str(col)) for col in pivot_heatmap.columns
+                ]
+
                 heatmap = sns.heatmap(
                     pivot_heatmap,
                     annot=True,
@@ -108,13 +140,15 @@ class DatasetAwarePlots:
                     vmin=0,
                     vmax=1,
                     ax=ax,
-                    cbar_kws={"label": "Success Rate"},
+                    cbar_kws={"label": "成功率"},
                     annot_kws={"fontsize": 26, "fontweight": "bold"},
+                    linewidths=1.5,
+                    linecolor="white",
                 )
                 # Increase colorbar label and tick label sizes
                 cbar = heatmap.collections[0].colorbar
                 cbar.ax.tick_params(labelsize=14)
-                cbar.set_label("Success Rate", size=16)
+                cbar.set_label("成功率", size=16, fontweight="bold")
             else:
                 ax.text(
                     0.5,
@@ -133,15 +167,21 @@ class DatasetAwarePlots:
                 va="center",
                 transform=ax.transAxes,
             )
-        ax.set_xlabel("Configuration Type", fontsize=20, fontweight="bold")
-        ax.set_ylabel("Problem Complexity Level", fontsize=20, fontweight="bold")
+        ax.set_xlabel("プロンプト構成", fontsize=20, fontweight="bold", labelpad=10)
+        ax.set_ylabel("複雑度レベル", fontsize=20, fontweight="bold", labelpad=10)
         ax.tick_params(axis="both", which="major", labelsize=16)
+        plt.xticks(rotation=30, ha="right")
+        plt.yticks(rotation=0)
 
         plt.tight_layout()
         plt.savefig(
             output_path / "6_success_by_complexity.png", dpi=300, bbox_inches="tight"
         )
         plt.close()
+
+        # Reset font settings
+        plt.rcParams["font.sans-serif"] = ["DejaVu Sans"]
+        plt.rcParams["axes.unicode_minus"] = True
 
     def _plot_cost_vs_coverage_by_model(self, output_path: Path) -> None:
         """Plot cost vs coverage scatter plots for each model."""
