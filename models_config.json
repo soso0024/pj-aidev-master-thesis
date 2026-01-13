@@ -19,7 +19,7 @@
       }
     },
     "claude-opus-4-5": {
-      "api_name": "claude-opus-4-5-20260101",
+      "api_name": "claude-opus-4-5-20251101",
       "folder_name": "claude-opus-4-5",
       "provider": "anthropic",
       "pricing": {
@@ -43,6 +43,24 @@
       "pricing": {
         "input_per_1M": 1.25,
         "output_per_1M": 10.0
+      }
+    },
+    "gpt-5-mini": {
+      "api_name": "gpt-5-mini-2025-08-07",
+      "folder_name": "gpt-5-mini",
+      "provider": "openai",
+      "pricing": {
+        "input_per_1M": 0.25,
+        "output_per_1M": 2.0
+      }
+    },
+    "gpt-5-nano": {
+      "api_name": "gpt-5-nano-2025-08-07",
+      "folder_name": "gpt-5-nano",
+      "provider": "openai",
+      "pricing": {
+        "input_per_1M": 0.05,
+        "output_per_1M": 0.4
       }
     },
     "gemini-2.5-flash": {

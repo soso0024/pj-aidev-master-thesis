@@ -152,8 +152,8 @@ def parse_arguments():
     )
     parser.add_argument(
         "--dataset-path",
-        default="dataset/HumanEval.jsonl",
-        help="Path to the dataset file (default: dataset/HumanEval.jsonl)",
+        default=None,
+        help="Path to the dataset file (optional - will load from HuggingFace if not provided)",
     )
     parser.add_argument(
         "--output-dir", required=True, help="Output directory for visualization files"
@@ -161,7 +161,8 @@ def parse_arguments():
     args = parser.parse_args()
     if not os.path.isdir(args.results_dir):
         parser.error(f"Error: Results directory '{args.results_dir}' not found.")
-    if not os.path.isfile(args.dataset_path):
+    # Only validate dataset path if explicitly provided
+    if args.dataset_path is not None and not os.path.isfile(args.dataset_path):
         parser.error(f"Error: Dataset file '{args.dataset_path}' not found.")
     return args
 
@@ -175,12 +176,17 @@ def main():
     print("🔍 Test Results Visualization Tool (Refactored)")
     print("=" * 50)
     print(f"📁 Results directory: {args.results_dir}")
-    print(f"📊 Dataset path: {args.dataset_path}")
+    if args.dataset_path:
+        print(f"📊 Dataset path: {args.dataset_path}")
+    else:
+        print(f"📊 Dataset source: HuggingFace (openai/openai_humaneval)")
     print(f"📈 Output directory: {args.output_dir}")
 
     # Initialize analyzer with user-specified directories
+    # Use a default path that will trigger HuggingFace loading if not provided
+    dataset_path = args.dataset_path if args.dataset_path else "dataset/HumanEval.jsonl"
     analyzer = TestResultsAnalyzer(
-        results_dir=args.results_dir, dataset_path=args.dataset_path
+        results_dir=args.results_dir, dataset_path=dataset_path
     )
 
     # Load data
