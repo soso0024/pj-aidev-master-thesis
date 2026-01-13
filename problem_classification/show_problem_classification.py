@@ -4,11 +4,131 @@ Display Problem Classification Details
 
 Shows how HumanEval problems are classified into complexity levels
 based on cognitive complexity scores.
+Also visualizes bug type distribution from HumanEvalPack dataset.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path to allow imports from analysis module
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 from analysis.problem_classifier import ProblemClassifier
+
+# Set Japanese font for matplotlib
+matplotlib.rcParams['font.family'] = ['Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Takao', 'IPAexGothic', 'IPAPGothic', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False  # Fix minus sign display
+
+# Import datasets library for HumanEvalPack
+try:
+    from datasets import load_dataset
+    DATASETS_AVAILABLE = True
+except ImportError:
+    DATASETS_AVAILABLE = False
+    print("Warning: datasets library not available. Bug type visualization will be skipped.")
+
+
+def load_bug_type_distribution():
+    """Load bug type distribution from HumanEvalPack dataset.
+    
+    Returns:
+        dict: Bug type counts, or None if dataset not available
+    """
+    if not DATASETS_AVAILABLE:
+        return None
+    
+    try:
+        print("\nLoading HumanEvalPack dataset from Hugging Face...")
+        dataset = load_dataset("bigcode/humanevalpack", "python", split="test")
+        
+        # Count bug types
+        bug_type_counts = {}
+        for item in dataset:
+            bug_type = item.get("bug_type", "unknown")
+            bug_type_counts[bug_type] = bug_type_counts.get(bug_type, 0) + 1
+        
+        print(f"✅ Loaded {len(dataset)} problems from HumanEvalPack dataset")
+        return bug_type_counts
+    
+    except Exception as e:
+        print(f"❌ Failed to load HumanEvalPack dataset: {e}")
+        return None
+
+
+def visualize_bug_types(bug_type_counts, output_dir="problem_classification"):
+    """Create visualization for bug type distribution.
+    
+    Args:
+        bug_type_counts: Dictionary of bug type counts
+        output_dir: Directory to save the visualization
+    """
+    if not bug_type_counts:
+        return
+    
+    print("\n" + "=" * 80)
+    print("BUG TYPE DISTRIBUTION (HumanEvalPack)")
+    print("=" * 80)
+    
+    # Sort bug types by count (descending)
+    sorted_bug_types = sorted(bug_type_counts.items(), key=lambda x: x[1], reverse=True)
+    bug_types = [bt[0] for bt in sorted_bug_types]
+    counts = [bt[1] for bt in sorted_bug_types]
+    
+    # Map English bug types to Japanese
+    bug_type_translation = {
+        'value misuse': '値の誤用',
+        'missing logic': 'ロジック不足',
+        'excess logic': '余分なロジック',
+        'operator misuse': '演算子の誤用',
+        'variable misuse': '変数の誤用',
+        'function misuse': '関数の誤用'
+    }
+    bug_types_jp = [bug_type_translation.get(bt, bt) for bt in bug_types]
+    
+    total_problems = sum(counts)
+    
+    print(f"\nTotal Problems: {total_problems}")
+    print(f"\nDistribution by Bug Type:")
+    for bug_type, count in sorted_bug_types:
+        percentage = (count / total_problems) * 100
+        print(f"  {bug_type:<20}: {count:3d} problems ({percentage:5.1f}%)")
+    
+    # Create bar chart
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Define color palette for bug types
+    colors = ['#FF4B00', '#005AFF', '#03AF7A', '#4DC4FF', '#F6AA00', '#FFF100']
+    bar_colors = [colors[i % len(colors)] for i in range(len(bug_types))]
+    
+    bars = ax.bar(range(len(bug_types)), counts, color=bar_colors, 
+                   alpha=0.85, edgecolor='black', linewidth=2)
+    
+    # Set x-axis labels (in Japanese)
+    ax.set_xticks(range(len(bug_types)))
+    ax.set_xticklabels(bug_types_jp, rotation=45, ha='right', fontsize=12, fontweight='bold')
+    
+    # Set y-axis label (in Japanese)
+    ax.set_ylabel('問題数', fontsize=14, fontweight='bold')
+    
+    # No title (as requested)
+    ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+    
+    # Add value labels on bars
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        percentage = (counts[i] / total_problems) * 100
+        ax.text(bar.get_x() + bar.get_width()/2, height,
+                f'{int(height)}\n({percentage:.1f}%)',
+                ha='center', va='bottom', fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    output_path = f"{output_dir}/bug_type_distribution.png"
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\n✅ Saved: {output_path}")
+    plt.close()
 
 
 def main():
@@ -134,8 +254,8 @@ def main():
     ax1.grid(True, alpha=0.3, linestyle='--')
     
     plt.tight_layout()
-    plt.savefig('complexity_distribution.png', dpi=300, bbox_inches='tight')
-    print("✅ Saved: complexity_distribution.png")
+    plt.savefig('problem_classification/complexity_distribution.png', dpi=300, bbox_inches='tight')
+    print("✅ Saved: problem_classification/complexity_distribution.png")
     plt.close()
     
     # ========================================================================
@@ -157,9 +277,18 @@ def main():
                 ha='center', va='bottom', fontsize=16, fontweight='bold')
     
     plt.tight_layout()
-    plt.savefig('problems_by_level.png', dpi=300, bbox_inches='tight')
-    print("✅ Saved: problems_by_level.png")
+    plt.savefig('problem_classification/problems_by_level.png', dpi=300, bbox_inches='tight')
+    print("✅ Saved: problem_classification/problems_by_level.png")
     plt.close()
+    
+    # ========================================================================
+    # VISUALIZATION 3: Bug Type Distribution from HumanEvalPack
+    # ========================================================================
+    bug_type_counts = load_bug_type_distribution()
+    if bug_type_counts:
+        visualize_bug_types(bug_type_counts)
+    else:
+        print("\n⚠️  Skipping bug type visualization (dataset not available)")
     
     print("\n" + "=" * 80)
     print("ANALYSIS COMPLETE")
