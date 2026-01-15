@@ -247,9 +247,8 @@ def main():
         ax1.axvline(high_t, color='black', linestyle=':', linewidth=2.5, 
                    label=f'Medium/Complex: {high_t:.1f}')
     
-    ax1.set_xlabel('Cognitive Complexity Score', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Number of Problems', fontsize=14, fontweight='bold')
-    ax1.set_title('Distribution of Cognitive Complexity Scores', fontsize=16, fontweight='bold')
+    ax1.set_xlabel('認知的複雑度スコア', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('問題数', fontsize=14, fontweight='bold')
     ax1.legend(fontsize=12, framealpha=0.9, loc='upper right')
     ax1.grid(True, alpha=0.3, linestyle='--')
     
@@ -266,8 +265,7 @@ def main():
     counts = [level_counts['simple'], level_counts['medium'], level_counts['complex']]
     colors = [COLOR_SIMPLE, COLOR_MEDIUM, COLOR_COMPLEX]
     bars = ax2.bar(levels, counts, color=colors, alpha=0.85, edgecolor='black', linewidth=2)
-    ax2.set_ylabel('Number of Problems', fontsize=14, fontweight='bold')
-    ax2.set_title('Problems by Complexity Level', fontsize=16, fontweight='bold')
+    ax2.set_ylabel('問題数', fontsize=14, fontweight='bold')
     ax2.grid(True, axis='y', alpha=0.3, linestyle='--')
     # Add value labels on bars
     for bar in bars:
