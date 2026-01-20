@@ -114,6 +114,7 @@ def visualize_bug_types(bug_type_counts, output_dir="problem_classification"):
     ax.set_ylabel('問題数', fontsize=14, fontweight='bold')
     
     # No title (as requested)
+    ax.set_ylim(0, 50)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     
     # Add value labels on bars
