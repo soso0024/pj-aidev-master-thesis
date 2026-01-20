@@ -227,9 +227,10 @@ def main():
     complex_scores = [classifications[pid]['complexity_score'] 
                      for pid in problem_ids if classifications[pid]['complexity_level'] == 'complex']
     
-    # Define bins for histogram
-    bins = 20
-    bin_range = (0, max(complexity_scores) + 1)
+    # Define bins for histogram - 整数スコアに合わせて1間隔のビンを使用
+    max_score = int(max(complexity_scores))
+    bins = np.arange(0, max_score + 2, 1)  # 0, 1, 2, ..., max_score+1 のエッジ
+    bin_range = (0, max_score + 1)
     
     # Plot histograms for each level with different colors
     ax1.hist(simple_scores, bins=bins, range=bin_range, color=COLOR_SIMPLE, 
@@ -239,18 +240,11 @@ def main():
     ax1.hist(complex_scores, bins=bins, range=bin_range, color=COLOR_COMPLEX, 
              alpha=0.75, edgecolor='black', linewidth=1.2, label='Complex')
     
-    # Add threshold lines with different line styles (both black)
-    if classifier.complexity_thresholds:
-        low_t, high_t = classifier.complexity_thresholds
-        ax1.axvline(low_t, color='black', linestyle='--', linewidth=2.5, 
-                   label=f'Simple/Medium: {low_t:.1f}')
-        ax1.axvline(high_t, color='black', linestyle=':', linewidth=2.5, 
-                   label=f'Medium/Complex: {high_t:.1f}')
-    
     ax1.set_xlabel('認知的複雑度スコア', fontsize=14, fontweight='bold')
     ax1.set_ylabel('問題数', fontsize=14, fontweight='bold')
     ax1.legend(fontsize=12, framealpha=0.9, loc='upper right')
     ax1.grid(True, alpha=0.3, linestyle='--')
+    ax1.set_xlim(left=0)  # X軸を0から開始
     
     plt.tight_layout()
     plt.savefig('problem_classification/complexity_distribution.png', dpi=300, bbox_inches='tight')
