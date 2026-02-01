@@ -114,6 +114,7 @@ def visualize_bug_types(bug_type_counts, output_dir="problem_classification"):
     ax.set_ylabel('問題数', fontsize=14, fontweight='bold')
     
     # No title (as requested)
+    ax.set_ylim(0, 50)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     
     # Add value labels on bars
@@ -227,31 +228,59 @@ def main():
     complex_scores = [classifications[pid]['complexity_score'] 
                      for pid in problem_ids if classifications[pid]['complexity_level'] == 'complex']
     
-    # Define bins for histogram
-    bins = 20
-    bin_range = (0, max(complexity_scores) + 1)
+    # Define bins for histogram - 整数スコアに合わせて1間隔のビンを使用
+    # 離散値（整数）のため、各整数の中心にバーが来るようにビンを設定（例：0の場合は-0.5〜0.5）
+    max_score = int(max(complexity_scores))
+    bins = np.arange(-0.5, max_score + 1.5, 1)
     
     # Plot histograms for each level with different colors
-    ax1.hist(simple_scores, bins=bins, range=bin_range, color=COLOR_SIMPLE, 
-             alpha=0.75, edgecolor='black', linewidth=1.2, label='Simple')
-    ax1.hist(medium_scores, bins=bins, range=bin_range, color=COLOR_MEDIUM, 
-             alpha=0.75, edgecolor='black', linewidth=1.2, label='Medium')
-    ax1.hist(complex_scores, bins=bins, range=bin_range, color=COLOR_COMPLEX, 
-             alpha=0.75, edgecolor='black', linewidth=1.2, label='Complex')
+    ax1.hist(simple_scores, bins=bins, color=COLOR_SIMPLE, 
+             alpha=0.75, label='Simple')
+    ax1.hist(medium_scores, bins=bins, color=COLOR_MEDIUM, 
+             alpha=0.75, label='Medium')
+    ax1.hist(complex_scores, bins=bins, color=COLOR_COMPLEX, 
+             alpha=0.75, label='Complex')
     
-    # Add threshold lines with different line styles (both black)
-    if classifier.complexity_thresholds:
-        low_t, high_t = classifier.complexity_thresholds
-        ax1.axvline(low_t, color='black', linestyle='--', linewidth=2.5, 
-                   label=f'Simple/Medium: {low_t:.1f}')
-        ax1.axvline(high_t, color='black', linestyle=':', linewidth=2.5, 
-                   label=f'Medium/Complex: {high_t:.1f}')
-    
-    ax1.set_xlabel('Cognitive Complexity Score', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Number of Problems', fontsize=14, fontweight='bold')
-    ax1.set_title('Distribution of Cognitive Complexity Scores', fontsize=16, fontweight='bold')
+    ax1.set_xlabel('認知的複雑度スコア', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('問題数', fontsize=14, fontweight='bold')
     ax1.legend(fontsize=12, framealpha=0.9, loc='upper right')
     ax1.grid(True, alpha=0.3, linestyle='--')
+    ax1.set_xlim(left=0)  # X軸を0から開始（0のバーは半分切れるが、マイナス表示を避けるため）
+
+    # 閾値の線を追加
+    if classifier.complexity_thresholds:
+        low_threshold, high_threshold = classifier.complexity_thresholds
+        
+        # 視覚的な境界線（整数ビンの間）に設定
+        # 1.32 -> 1.5 (1と2の間), 5.33 -> 5.5 (5と6の間)
+        visual_low = 1.5
+        visual_high = 5.5
+        
+        # Simple/Medium 境界線
+        ax1.axvline(x=visual_low, color='#03AF7A', linestyle='--', linewidth=4, alpha=0.8)
+        
+        # Medium/Complex 境界線
+        ax1.axvline(x=visual_high, color='#FF4B00', linestyle='--', linewidth=4, alpha=0.8)
+
+        # X軸の目盛りを調整（閾値を含める、5を除外）
+        # 基本の整数目盛り（0, 5, 10...）から5を除外
+        base_ticks = [t for t in range(0, max_score + 2, 5) if t != 5]
+        
+        # 閾値を追加してソート
+        custom_ticks = sorted(list(set(base_ticks + [visual_low, visual_high])))
+        ax1.set_xticks(custom_ticks)
+        
+        # ラベルのフォーマット（整数は整数表示、小数は小数表示）
+        # 視覚的な位置(1.5, 5.5)には実際の閾値(1.3, 5.3)を表示する
+        labels = []
+        for tick in custom_ticks:
+            if tick == visual_low:
+                labels.append(f'{low_threshold:.1f}')
+            elif tick == visual_high:
+                labels.append(f'{high_threshold:.1f}')
+            else:
+                labels.append(f'{int(tick)}')
+        ax1.set_xticklabels(labels, rotation=0, fontsize=10)
     
     plt.tight_layout()
     plt.savefig('problem_classification/complexity_distribution.png', dpi=300, bbox_inches='tight')
@@ -266,8 +295,7 @@ def main():
     counts = [level_counts['simple'], level_counts['medium'], level_counts['complex']]
     colors = [COLOR_SIMPLE, COLOR_MEDIUM, COLOR_COMPLEX]
     bars = ax2.bar(levels, counts, color=colors, alpha=0.85, edgecolor='black', linewidth=2)
-    ax2.set_ylabel('Number of Problems', fontsize=14, fontweight='bold')
-    ax2.set_title('Problems by Complexity Level', fontsize=16, fontweight='bold')
+    ax2.set_ylabel('問題数', fontsize=14, fontweight='bold')
     ax2.grid(True, axis='y', alpha=0.3, linestyle='--')
     # Add value labels on bars
     for bar in bars:

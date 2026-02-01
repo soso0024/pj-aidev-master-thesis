@@ -43,7 +43,7 @@ python run_batch_test_case_generator.py --start 0 --end 20 --disable-evaluation
 | `--start N`              | Start task ID number                          | 0                       |
 | `--end N`                | End task ID number                            | 50                      |
 | `--task-ids "X,Y,Z"`     | Comma-separated specific task IDs             | None (use range)        |
-| `--models MODEL1 MODEL2` | LLM model(s) to use (can specify multiple)    | gemini-2.5-flash-lite   |
+| `--models MODEL1 MODEL2` | LLM model(s) to use (can specify multiple)    | gemini-2.5-flash        |
 | `--dataset PATH`         | Legacy parameter (datasets loaded from HuggingFace 🤗) | N/A |
 | `--dataset-type TYPE`    | Dataset to use (humaneval or humanevalpack)   | humaneval               |
 | `--output-dir DIR`       | Output directory for test files               | generated_tests         |
@@ -63,7 +63,7 @@ Generate tests using multiple LLM models simultaneously:
 python run_batch_test_case_generator.py --start 0 --end 5 --models claude-sonnet-4-5 gemini-2.5-flash
 
 # Compare model performance across a range
-python run_batch_test_case_generator.py --start 0 --end 10 --models claude-sonnet-4-5 gpt-4.1
+python run_batch_test_case_generator.py --start 0 --end 10 --models claude-sonnet-4-5 gpt-5.1
 ```
 
 ## Examples
